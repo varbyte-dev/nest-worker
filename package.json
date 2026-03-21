@@ -1,5 +1,5 @@
 {
-  "name": "nest-worker",
+  "name": "@varbyte/nest-worker",
   "version": "0.1.0",
   "description": "NestJS-inspired micro framework for Cloudflare Workers with D1 support",
   "keywords": [
@@ -15,7 +15,7 @@
   "author": "Daniel Vargas",
   "repository": {
     "type": "git",
-    "url": "https://github.com/varbyte-dev/nest-worker"
+    "url": "git+https://github.com/varbyte-dev/nest-worker"
   },
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -35,6 +35,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "prepublishOnly": "pnpm run build",
+    "release": "commit-and-tag-version",
+    "release:minor": "commit-and-tag-version --release-as minor",
+    "release:major": "commit-and-tag-version --release-as major",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
@@ -46,6 +49,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241205.0",
+    "commit-and-tag-version": "^12.7.1",
     "typescript": "^5.3.3",
     "wrangler": "^3.40.0"
   },

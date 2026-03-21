@@ -45,7 +45,7 @@ npm install -D typescript wrangler @cloudflare/workers-types
 ```ts
 // worker.ts
 import 'reflect-metadata';
-import { Module, createApplication, cors } from './src/index';
+import { Module, createApplication, cors } from '@varbyte/nest-worker';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 
