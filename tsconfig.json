@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+    "strict": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "types": ["@cloudflare/workers-types"],
+    "skipLibCheck": true,
+    "outDir": "dist",
+    "rootDir": ".",
+    "declaration": true,
+    "paths": {
+      "nest-worker": ["./src/index.ts"]
+    }
+  },
+  "include": ["src/**/*", "example/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

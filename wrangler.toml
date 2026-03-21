@@ -1,0 +1,33 @@
+name = "my-nest-worker"
+main = "example/worker.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# Public environment variables
+APP_ENV = "production"
+
+# D1 Database binding
+[[d1_databases]]
+binding = "DB"           # accessed in code as env.DB
+database_name = "my-app-db"
+database_id = "YOUR_D1_DATABASE_ID_HERE"
+
+# Optional: KV namespace
+# [[kv_namespaces]]
+# binding = "KV"
+# id = "YOUR_KV_NAMESPACE_ID"
+
+# Optional: R2 bucket
+# [[r2_buckets]]
+# binding = "BUCKET"
+# bucket_name = "my-bucket"
+
+# Secrets (set via: wrangler secret put API_SECRET)
+# API_SECRET = set via CLI, not here
+
+# Wrangler bundles with esbuild automatically; no build command needed.
+
+[dev]
+port = 8787
+local_protocol = "http"

@@ -1,0 +1,120 @@
+import { MiddlewareFn } from '../core/types';
+
+// ─── CORS Middleware ──────────────────────────────────────────────
+
+export interface CorsOptions {
+  origin?: string | string[];
+  methods?: string[];
+  allowedHeaders?: string[];
+  credentials?: boolean;
+  maxAge?: number;
+}
+
+export function cors(options: CorsOptions = {}): MiddlewareFn {
+  const {
+    origin = '*',
+    methods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders = ['Content-Type', 'Authorization'],
+    credentials = false,
+    maxAge = 86400,
+  } = options;
+
+  return (req) => {
+    const originHeader = Array.isArray(origin) ? origin.join(', ') : origin;
+    const headers: Record<string, string> = {
+      'Access-Control-Allow-Origin': originHeader,
+      'Access-Control-Allow-Methods': methods.join(', '),
+      'Access-Control-Allow-Headers': allowedHeaders.join(', '),
+      'Access-Control-Max-Age': String(maxAge),
+    };
+    if (credentials) headers['Access-Control-Allow-Credentials'] = 'true';
+
+    if (req.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers });
+    }
+
+    // For non-preflight, we need to attach CORS headers to the response.
+    // We return a modified request-like signal here — the router will handle it.
+    // Attach a helper to the request so downstream can read the headers.
+    (req as any).__corsHeaders = headers;
+  };
+}
+
+// ─── Logger Middleware ────────────────────────────────────────────
+
+export function logger(): MiddlewareFn {
+  return async (req) => {
+    const start = Date.now();
+    const url = new URL(req.url);
+    console.log(`[${new Date().toISOString()}] --> ${req.method} ${url.pathname}`);
+    // We can't intercept the response here, so we log the start only
+    // For full req/res logging you can wrap the fetch handler instead
+  };
+}
+
+// ─── Bearer Token Auth Guard ──────────────────────────────────────
+
+export interface BearerAuthOptions {
+  /** Env key that holds the expected token, or a static token string */
+  tokenEnvKey?: string;
+  staticToken?: string;
+}
+
+export function bearerAuth(options: BearerAuthOptions = {}): MiddlewareFn {
+  return (req, env) => {
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const token = authHeader.slice(7);
+    const expected = options.staticToken || (options.tokenEnvKey ? (env[options.tokenEnvKey] as string) : null);
+
+    if (!expected || token !== expected) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+  };
+}
+
+// ─── Rate Limiter (in-memory, per-IP) ────────────────────────────
+// ⚠️ WARNING: In-memory store does NOT persist across Worker invocations.
+// This only works reliably in local dev. For production, use Durable Objects or KV.
+
+export interface RateLimitOptions {
+  windowMs?: number;
+  max?: number;
+}
+
+export function rateLimit(options: RateLimitOptions = {}): MiddlewareFn {
+  const { windowMs = 60_000, max = 60 } = options;
+  const store = new Map<string, { count: number; reset: number }>();
+
+  return (req) => {
+    const ip = req.headers.get('CF-Connecting-IP') || req.headers.get('X-Forwarded-For') || 'unknown';
+    const now = Date.now();
+    let entry = store.get(ip);
+
+    if (!entry || now > entry.reset) {
+      entry = { count: 0, reset: now + windowMs };
+      store.set(ip, entry);
+    }
+
+    entry.count++;
+
+    if (entry.count > max) {
+      return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
+        status: 429,
+        headers: {
+          'Content-Type': 'application/json',
+          'Retry-After': String(Math.ceil((entry.reset - now) / 1000)),
+        },
+      });
+    }
+  };
+}

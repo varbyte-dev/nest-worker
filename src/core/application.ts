@@ -1,0 +1,57 @@
+import { MiddlewareFn } from './types';
+import { Router } from './router';
+import { Container } from './container';
+
+export interface WorkerEnv {
+  [key: string]: unknown;
+}
+
+export class NestWorkerApplication {
+  private router: Router;
+  private container: Container;
+  private globalMiddlewares: MiddlewareFn[] = [];
+
+  constructor(private rootModule: any) {
+    this.container = new Container();
+    this.router = new Router(this.container);
+    this.bootstrap();
+  }
+
+  private bootstrap() {
+    this.container.register(this.rootModule);
+    const controllers = this.container.getControllers();
+    for (const ctrl of controllers) {
+      this.router.registerController(ctrl);
+    }
+  }
+
+  use(middleware: MiddlewareFn): this {
+    this.globalMiddlewares.push(middleware);
+    return this;
+  }
+
+  async handle(request: Request, env: WorkerEnv, ctx: ExecutionContext): Promise<Response> {
+    // Inject env bindings into container
+    this.container.setEnv(env);
+
+    // Run global middlewares
+    for (const mw of this.globalMiddlewares) {
+      const result = await mw(request, env);
+      if (result instanceof Response) return result;
+    }
+
+    return this.router.resolve(request, env, ctx);
+  }
+
+  /** Returns the fetch handler to export from the Worker */
+  get handler() {
+    return {
+      fetch: (req: Request, env: WorkerEnv, ctx: ExecutionContext) =>
+        this.handle(req, env, ctx),
+    };
+  }
+}
+
+export function createApplication(rootModule: any): NestWorkerApplication {
+  return new NestWorkerApplication(rootModule);
+}
