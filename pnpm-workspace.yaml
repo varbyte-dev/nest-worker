@@ -1,4 +1,4 @@
-allowBuilds:
+onlyBuiltDependencies:
   - esbuild
   - sharp
   - workerd
