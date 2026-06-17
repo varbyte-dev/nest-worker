@@ -1,6 +1,6 @@
 {
   "name": "@varbyte/nest-worker",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "NestJS-inspired micro framework for Cloudflare Workers with D1 support",
   "keywords": [
     "cloudflare",
