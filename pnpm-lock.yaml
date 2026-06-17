@@ -41,8 +41,8 @@ importers:
         specifier: ^20.0.0
         version: 20.19.43
       '@varbyte/nest-worker':
-        specifier: workspace:*
-        version: link:..
+        specifier: ^0.1.2
+        version: 0.1.2(reflect-metadata@0.2.2)
       typescript:
         specifier: ^5.3.3
         version: 5.9.3
@@ -526,6 +526,12 @@ packages:
 
   '@types/normalize-package-data@2.4.4':
     resolution: {integrity: sha512-37i+OaWTh9qeK4LSHPsyRC7NahnGotNuZvjLSgcPzblpHB3rrCJxAOgI5gCdKm7coonsaX1Of0ILiTcnZjbfxA==}
+
+  '@varbyte/nest-worker@0.1.2':
+    resolution: {integrity: sha512-kCZcS9BjmIWlL7uXOY+x95eZrJ2tIN/rKKUH6oP+/Uu+umK6GzXsVXnSEJt99gYFUXyEKkIaEuQFbKo/DzefOw==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      reflect-metadata: '>=0.1.0'
 
   '@vitest/expect@4.1.9':
     resolution: {integrity: sha512-vl/rYsUKcBr3SnQn166+XR5ZQcgMx3DQhFWdfli/cWpLnLUmbxZvyrJZotLFUryib+LtArYMSTJ5RbQ57ZqrlA==}
@@ -1979,6 +1985,10 @@ snapshots:
       undici-types: 6.21.0
 
   '@types/normalize-package-data@2.4.4': {}
+
+  '@varbyte/nest-worker@0.1.2(reflect-metadata@0.2.2)':
+    dependencies:
+      reflect-metadata: 0.2.2
 
   '@vitest/expect@4.1.9':
     dependencies:
