@@ -30,6 +30,9 @@
   "files": [
     "dist",
     "README.md",
+    "README.es.md",
+    "EXAMPLES.md",
+    "EXAMPLES.es.md",
     "LICENSE"
   ],
   "scripts": {
@@ -41,6 +44,8 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "db:migrate": "wrangler d1 execute my-app-db --file=./migrations/001_init.sql",
     "db:seed": "wrangler d1 execute my-app-db --file=./migrations/002_seed.sql"
   },
@@ -51,6 +56,7 @@
     "@cloudflare/workers-types": "^4.20241205.0",
     "commit-and-tag-version": "^12.7.1",
     "typescript": "^5.3.3",
+    "vitest": "^4.1.9",
     "wrangler": "^3.40.0"
   },
   "peerDependencies": {

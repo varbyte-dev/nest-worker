@@ -1,6 +1,6 @@
-import { MiddlewareFn } from './types';
-import { Router } from './router';
-import { Container } from './container';
+import { MiddlewareFn } from "./types";
+import { Router } from "./router";
+import { Container } from "./container";
 
 export interface WorkerEnv {
   [key: string]: unknown;
@@ -30,13 +30,14 @@ export class NestWorkerApplication {
     return this;
   }
 
-  async handle(request: Request, env: WorkerEnv, ctx: ExecutionContext): Promise<Response> {
-    // Inject env bindings into container
-    this.container.setEnv(env);
-
-    // Run global middlewares
+  async handle(
+    request: Request,
+    env: WorkerEnv,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
+    // Run global middlewares (with ctx)
     for (const mw of this.globalMiddlewares) {
-      const result = await mw(request, env);
+      const result = await mw(request, env, ctx);
       if (result instanceof Response) return result;
     }
 

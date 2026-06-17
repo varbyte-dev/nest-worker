@@ -1,4 +1,11 @@
-export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD';
+export type HttpMethod =
+  | "GET"
+  | "POST"
+  | "PUT"
+  | "PATCH"
+  | "DELETE"
+  | "OPTIONS"
+  | "HEAD";
 
 export interface RouteDefinition {
   method: HttpMethod;
@@ -9,14 +16,15 @@ export interface RouteDefinition {
 
 export type MiddlewareFn = (
   req: Request,
-  env: Record<string, unknown>
+  env: Record<string, unknown>,
+  ctx: ExecutionContext,
 ) => Promise<Response | void> | Response | void;
 
 export type InjectionToken = string | symbol | (new (...args: any[]) => any);
 
 export interface ParamMetadata {
   index: number;
-  type: 'body' | 'param' | 'query' | 'header' | 'request' | 'env' | 'db';
+  type: "body" | "param" | "query" | "header" | "request" | "env" | "db";
   key?: string;
 }
 
@@ -58,4 +66,16 @@ export interface D1Result<T = unknown> {
 export interface D1ExecResult {
   count: number;
   duration: number;
+}
+
+/**
+ * Sanitize a SQL identifier (column name, table name, alias) against injection.
+ * Only allows alphanumeric characters and underscores.
+ */
+export function sanitizeIdentifier(id: string): string {
+  if (!id) throw new Error("SQL identifier cannot be empty");
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(id)) {
+    throw new Error(`Invalid SQL identifier: "${id}"`);
+  }
+  return id;
 }
