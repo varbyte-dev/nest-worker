@@ -20,6 +20,57 @@
 
 ---
 
+## CLI — `@varbyte/nest-worker-cli`
+
+Acelera tu desarrollo con la CLI oficial:
+
+```bash
+npm install -g @varbyte/nest-worker-cli
+# o ejecuta directamente
+npx @varbyte/nest-worker-cli
+```
+
+### Comandos
+
+| Comando | Descripción |
+|---------|-------------|
+| `nest-worker new <nombre>` | Crear un nuevo proyecto |
+| `nest-worker generate module <nombre>` | Generar un módulo |
+| `nest-worker generate controller <nombre>` | Generar un controlador con rutas CRUD |
+| `nest-worker generate service <nombre>` | Generar un servicio inyectable |
+| `nest-worker generate resource <nombre>` | Generar un recurso CRUD completo (módulo + controlador + servicio + repositorio + modelo + DTOs + migración) |
+| `nest-worker generate guard <nombre>` | Generar un guardia de autenticación |
+| `nest-worker generate middleware <nombre>` | Generar un middleware personalizado |
+| `nest-worker generate exception <nombre>` | Generar una excepción HTTP personalizada (flag `--status`) |
+| `nest-worker generate filter <nombre>` | Generar un filtro de errores |
+| `nest-worker generate repository <nombre>` | Generar un repositorio D1 |
+| `nest-worker generate model <nombre>` | Generar una interfaz de modelo |
+| `nest-worker generate dto <nombre>` | Generar DTOs de creación y actualización |
+| `nest-worker generate provider <nombre>` | Generar un provider personalizado |
+| `nest-worker generate migration <desc>` | Generar una migración SQL |
+| `nest-worker generate seed <nombre>` | Generar un seed SQL |
+| `nest-worker generate env <var>` | Agregar variable de entorno a `wrangler.toml` |
+| `nest-worker info` | Mostrar información del proyecto y framework |
+| `nest-worker list` | Listar recursos generados |
+| `nest-worker doctor` | Diagnosticar problemas de configuración |
+
+### Ejemplo rápido
+
+```bash
+# Crear un nuevo proyecto
+nest-worker new my-api
+cd my-api
+npm install
+
+# Generar un recurso CRUD completo
+nest-worker generate resource users
+
+# Iniciar desarrollo
+npm run dev
+```
+
+---
+
 ## Inicio rápido
 
 ### 1. Instalar dependencias

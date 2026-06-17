@@ -1,5 +1,48 @@
 # nest-worker Ejemplos 🪺
 
+## CLI - Uso
+
+Todos los ejemplos a continuación se pueden generar automáticamente usando `@varbyte/nest-worker-cli`:
+
+### Inicio rápido
+
+```bash
+# Instalar la CLI
+npm install -g @varbyte/nest-worker-cli
+
+# Crear un nuevo proyecto
+nest-worker new my-api
+
+# Generar un recurso CRUD completo
+nest-worker generate resource users
+nest-worker generate resource posts
+nest-worker generate resource comments
+
+# Generar guardias y middlewares
+nest-worker generate guard admin
+nest-worker generate middleware request-timer
+
+# Ver lo que se generó
+nest-worker list
+nest-worker doctor
+```
+
+Esto creará la estructura del proyecto, controladores, servicios, repositorios, DTOs y migraciones automáticamente.
+
+Referencia completa de comandos:
+
+| Comando | Qué genera |
+|---------|------------|
+| `nest-worker new <nombre>` | Scaffolding completo del proyecto con wrangler.toml, tsconfig, entry point, health check, middlewares, etc. |
+| `nest-worker generate resource <nombre>` | Módulo + Controlador + Servicio + Repositorio + Modelo + DTOs Creación/Actualización + Migración |
+| `nest-worker generate guard <nombre>` | Guardia de autenticación con `MiddlewareFn` |
+| `nest-worker generate middleware <nombre>` | Función middleware personalizada |
+| `nest-worker generate exception <nombre>` | Subclase personalizada de `HttpException` |
+| `nest-worker generate filter <nombre>` | Filtro middleware para capturar errores |
+| `nest-worker generate migration <desc>` | Archivo de migración SQL con timestamp |
+
+---
+
 > Una colección completa de ejemplos para `@varbyte/nest-worker`.
 > Ver este archivo en: [English](EXAMPLES.md) · [Español](EXAMPLES.es.md)
 
