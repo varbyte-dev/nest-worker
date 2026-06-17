@@ -1,0 +1,47 @@
+{
+  "name": "@varbyte/nest-worker-cli",
+  "version": "0.1.0",
+  "description": "CLI tool for @varbyte/nest-worker — scaffolding and code generation for NestJS-inspired Cloudflare Workers",
+  "keywords": [
+    "cloudflare",
+    "workers",
+    "nestjs",
+    "d1",
+    "cli",
+    "scaffolding",
+    "code-generation"
+  ],
+  "license": "MIT",
+  "author": "Daniel Vargas",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/varbyte-dev/nest-worker"
+  },
+  "type": "module",
+  "bin": {
+    "nest-worker": "./bin/nest-worker.js"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "pnpm run build",
+    "typecheck": "tsc --noEmit --noEmit"
+  },
+  "dependencies": {
+    "commander": "^12.0.0",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.3",
+    "@varbyte/nest-worker": "workspace:*"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

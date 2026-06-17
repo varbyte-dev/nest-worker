@@ -20,6 +20,57 @@
 
 ---
 
+## CLI — `@varbyte/nest-worker-cli`
+
+Accelerate your development with the official CLI:
+
+```bash
+npm install -g @varbyte/nest-worker-cli
+# or run directly
+npx @varbyte/nest-worker-cli
+```
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `nest-worker new <name>` | Scaffold a new project |
+| `nest-worker generate module <name>` | Generate a module |
+| `nest-worker generate controller <name>` | Generate a controller with CRUD routes |
+| `nest-worker generate service <name>` | Generate an injectable service |
+| `nest-worker generate resource <name>` | Generate a complete CRUD resource (module + controller + service + repository + model + DTOs + migration) |
+| `nest-worker generate guard <name>` | Generate an auth guard middleware |
+| `nest-worker generate middleware <name>` | Generate a custom middleware |
+| `nest-worker generate exception <name>` | Generate a custom HTTP exception (`--status` flag) |
+| `nest-worker generate filter <name>` | Generate an error-handling filter |
+| `nest-worker generate repository <name>` | Generate a D1 repository |
+| `nest-worker generate model <name>` | Generate a model interface |
+| `nest-worker generate dto <name>` | Generate create & update DTOs |
+| `nest-worker generate provider <name>` | Generate a custom provider |
+| `nest-worker generate migration <desc>` | Generate a SQL migration |
+| `nest-worker generate seed <name>` | Generate a SQL seed |
+| `nest-worker generate env <var>` | Add environment variable to `wrangler.toml` |
+| `nest-worker info` | Display project & framework info |
+| `nest-worker list` | List generated resources |
+| `nest-worker doctor` | Diagnose configuration issues |
+
+### Quick Example
+
+```bash
+# Create a new project
+nest-worker new my-api
+cd my-api
+npm install
+
+# Generate a complete CRUD resource
+nest-worker generate resource users
+
+# Start development
+npm run dev
+```
+
+---
+
 ## Quick Start
 
 ### 1. Install dependencies
