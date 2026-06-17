@@ -57,6 +57,16 @@ jobs:
 
       - run: cd cli && pnpm run build
 
+      - name: Ensure package exists in registry
+        run: |
+          curl -s -X PUT \
+            -H "Authorization: Bearer $NPM_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"name":"@varbyte/nest-worker-cli","access":"public"}' \
+            https://registry.npmjs.org/@varbyte%2fnest-worker-cli || true
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
       - run: cd cli && npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
