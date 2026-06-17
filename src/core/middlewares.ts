@@ -1,6 +1,25 @@
-import { MiddlewareFn } from '../core/types';
+import { MiddlewareFn } from "../core/types";
 
 // ─── CORS Middleware ──────────────────────────────────────────────
+
+/**
+ * WeakMap to associate CORS response headers with each request.
+ * Cleaner than mutating the Request object with a non-standard property.
+ */
+const corsHeadersMap = new WeakMap<Request, Record<string, string>>();
+
+export function setCorsHeaders(
+  req: Request,
+  headers: Record<string, string>,
+): void {
+  corsHeadersMap.set(req, headers);
+}
+
+export function getCorsHeaders(
+  req: Request,
+): Record<string, string> | undefined {
+  return corsHeadersMap.get(req);
+}
 
 export interface CorsOptions {
   origin?: string | string[];
@@ -12,41 +31,40 @@ export interface CorsOptions {
 
 export function cors(options: CorsOptions = {}): MiddlewareFn {
   const {
-    origin = '*',
-    methods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders = ['Content-Type', 'Authorization'],
+    origin = "*",
+    methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders = ["Content-Type", "Authorization"],
     credentials = false,
     maxAge = 86400,
   } = options;
 
-  return (req) => {
-    const originHeader = Array.isArray(origin) ? origin.join(', ') : origin;
+  return (_req, _env, _ctx) => {
+    const originHeader = Array.isArray(origin) ? origin.join(", ") : origin;
     const headers: Record<string, string> = {
-      'Access-Control-Allow-Origin': originHeader,
-      'Access-Control-Allow-Methods': methods.join(', '),
-      'Access-Control-Allow-Headers': allowedHeaders.join(', '),
-      'Access-Control-Max-Age': String(maxAge),
+      "Access-Control-Allow-Origin": originHeader,
+      "Access-Control-Allow-Methods": methods.join(", "),
+      "Access-Control-Allow-Headers": allowedHeaders.join(", "),
+      "Access-Control-Max-Age": String(maxAge),
     };
-    if (credentials) headers['Access-Control-Allow-Credentials'] = 'true';
+    if (credentials) headers["Access-Control-Allow-Credentials"] = "true";
 
-    if (req.method === 'OPTIONS') {
+    if (_req.method === "OPTIONS") {
       return new Response(null, { status: 204, headers });
     }
 
-    // For non-preflight, we need to attach CORS headers to the response.
-    // We return a modified request-like signal here — the router will handle it.
-    // Attach a helper to the request so downstream can read the headers.
-    (req as any).__corsHeaders = headers;
+    // Store CORS headers in WeakMap for the router to apply to the response
+    setCorsHeaders(_req, headers);
   };
 }
 
 // ─── Logger Middleware ────────────────────────────────────────────
 
 export function logger(): MiddlewareFn {
-  return async (req) => {
-    const start = Date.now();
+  return async (req, _env, _ctx) => {
     const url = new URL(req.url);
-    console.log(`[${new Date().toISOString()}] --> ${req.method} ${url.pathname}`);
+    console.log(
+      `[${new Date().toISOString()}] --> ${req.method} ${url.pathname}`,
+    );
     // We can't intercept the response here, so we log the start only
     // For full req/res logging you can wrap the fetch handler instead
   };
@@ -61,22 +79,24 @@ export interface BearerAuthOptions {
 }
 
 export function bearerAuth(options: BearerAuthOptions = {}): MiddlewareFn {
-  return (req, env) => {
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+  return (req, env, _ctx) => {
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { "Content-Type": "application/json" },
       });
     }
 
     const token = authHeader.slice(7);
-    const expected = options.staticToken || (options.tokenEnvKey ? (env[options.tokenEnvKey] as string) : null);
+    const expected =
+      options.staticToken ||
+      (options.tokenEnvKey ? (env[options.tokenEnvKey] as string) : null);
 
     if (!expected || token !== expected) {
-      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
         status: 403,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { "Content-Type": "application/json" },
       });
     }
   };
@@ -95,8 +115,11 @@ export function rateLimit(options: RateLimitOptions = {}): MiddlewareFn {
   const { windowMs = 60_000, max = 60 } = options;
   const store = new Map<string, { count: number; reset: number }>();
 
-  return (req) => {
-    const ip = req.headers.get('CF-Connecting-IP') || req.headers.get('X-Forwarded-For') || 'unknown';
+  return (req, _env, _ctx) => {
+    const ip =
+      req.headers.get("CF-Connecting-IP") ||
+      req.headers.get("X-Forwarded-For") ||
+      "unknown";
     const now = Date.now();
     let entry = store.get(ip);
 
@@ -108,11 +131,11 @@ export function rateLimit(options: RateLimitOptions = {}): MiddlewareFn {
     entry.count++;
 
     if (entry.count > max) {
-      return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
+      return new Response(JSON.stringify({ error: "Too Many Requests" }), {
         status: 429,
         headers: {
-          'Content-Type': 'application/json',
-          'Retry-After': String(Math.ceil((entry.reset - now) / 1000)),
+          "Content-Type": "application/json",
+          "Retry-After": String(Math.ceil((entry.reset - now) / 1000)),
         },
       });
     }

@@ -1,35 +1,35 @@
 # nest-worker 🪺
 
-> NestJS-inspired mini framework for **Cloudflare Workers** with native **D1** support.
+> Mini framework estilo NestJS para **Cloudflare Workers** con soporte nativo para **D1**.
 
 [![npm version](https://img.shields.io/npm/v/@varbyte/nest-worker)](https://www.npmjs.com/package/@varbyte/nest-worker)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
 
-## Features
+## Características
 
-- **Decorators** — `@Controller`, `@Get`, `@Post`, `@Body`, `@Param`, `@D1`, etc.
-- **Modules** — organize your app with `@Module`
-- **Dependency Injection** — `@Injectable` + constructor injection
-- **D1 Integration** — `@D1()` injects the binding, `D1Repository` and `QueryBuilder` ready to use
-- **Middlewares** — CORS, logger, rate limiting, bearer auth included
-- **HTTP Exceptions** — `NotFoundException`, `BadRequestException`, etc.
-- **Zero runtime dependencies** — only `reflect-metadata`
-- **SQL Injection Protection** — all identifiers are sanitized automatically
+- **Decoradores** — `@Controller`, `@Get`, `@Post`, `@Body`, `@Param`, `@D1`, etc.
+- **Módulos** — organiza tu app en módulos con `@Module`
+- **Inyección de dependencias** — `@Injectable` + inyección por constructor
+- **D1 integrado** — `@D1()` inyecta el binding, `D1Repository` y `QueryBuilder` listos para usar
+- **Middlewares** — CORS, logger, rate limiting, bearer auth incluidos
+- **Excepciones HTTP** — `NotFoundException`, `BadRequestException`, etc.
+- **Cero dependencias en runtime** — solo `reflect-metadata`
+- **Protección contra SQL Injection** — todos los identificadores se sanitizan automáticamente
 
 ---
 
-## Quick Start
+## Inicio rápido
 
-### 1. Install dependencies
+### 1. Instalar dependencias
 
 ```bash
 npm install @varbyte/nest-worker reflect-metadata
 npm install -D typescript wrangler @cloudflare/workers-types
 ```
 
-### 2. Configure `tsconfig.json`
+### 2. Configurar `tsconfig.json`
 
 ```json
 {
@@ -44,7 +44,7 @@ npm install -D typescript wrangler @cloudflare/workers-types
 }
 ```
 
-### 3. Create your Worker
+### 3. Crear tu Worker
 
 ```ts
 // worker.ts
@@ -65,7 +65,7 @@ app.use(cors());
 export default app.handler;
 ```
 
-### 4. Configure `wrangler.toml`
+### 4. Configurar `wrangler.toml`
 
 ```toml
 name = "my-nest-worker"
@@ -81,24 +81,24 @@ database_id = "YOUR_D1_DATABASE_ID"
 
 ---
 
-## Decorators
+## Decoradores
 
-### Modules
+### Módulos
 
 ```ts
 @Module({
-  imports: [OtherModule],      // import other modules
+  imports: [OtherModule],      // importar otros módulos
   controllers: [UsersController],
   providers: [UsersService],
-  exports: [UsersService],     // optional
+  exports: [UsersService],     // opcional
 })
 class AppModule {}
 ```
 
-### Controllers & Routes
+### Controladores y rutas
 
 ```ts
-@Controller('users')           // path prefix → /users
+@Controller('users')           // prefijo de ruta → /users
 export class UsersController {
   constructor(private svc: UsersService) {}
 
@@ -119,22 +119,22 @@ export class UsersController {
 }
 ```
 
-### Handler Parameters
+### Parámetros de handler
 
-| Decorator | Description |
+| Decorador | Descripción |
 |-----------|-------------|
-| `@Body()` | Full request body (JSON) |
-| `@Body('field')` | A specific body field |
+| `@Body()` | Body completo del request (JSON) |
+| `@Body('campo')` | Un campo específico del body |
 | `@Param('id')` | Path parameter |
 | `@Query('page')` | Query string parameter |
-| `@Headers('authorization')` | Specific header |
-| `@Req()` | Full Request object |
-| `@D1()` | D1 binding (defaults to env.DB) |
-| `@D1('MY_DB')` | D1 binding with custom key |
-| `@Env()` | Complete env object |
-| `@Env('MY_SECRET')` | Specific environment variable |
+| `@Headers('authorization')` | Header específico |
+| `@Req()` | Request completo |
+| `@D1()` | Binding D1 (env.DB por defecto) |
+| `@D1('MY_DB')` | Binding D1 con clave personalizada |
+| `@Env()` | Objeto env completo |
+| `@Env('MY_SECRET')` | Variable de entorno específica |
 
-### Services
+### Servicios
 
 ```ts
 @Injectable()
@@ -148,16 +148,16 @@ export class UsersService {
 
 ---
 
-## D1 — Database
+## D1 — Base de datos
 
 ### D1Repository
 
-Base class with ready-to-use CRUD operations:
+Clase base con operaciones CRUD listas para usar:
 
 ```ts
 const repo = new D1Repository<User>(db, 'users');
 
-// Basic CRUD
+// CRUD básico
 await repo.findAll();
 await repo.findById(1);
 await repo.findWhere({ role: 'admin' });
@@ -167,16 +167,16 @@ await repo.update(1, { name: 'Alice Updated' });
 await repo.delete(1);
 await repo.count({ role: 'admin' });
 
-// Custom queries
+// Queries personalizadas
 await repo.raw('SELECT * FROM users WHERE created_at > ?', '2024-01-01');
 await repo.rawFirst('SELECT * FROM users WHERE email = ?', 'alice@example.com');
 ```
 
-> **Security:** All column and table names are automatically sanitized against SQL injection. The `raw()` and `rawFirst()` methods rely on parameterized bindings for values.
+> **Seguridad:** Todos los nombres de columnas y tablas se sanitizan automáticamente contra SQL injection. Los métodos `raw()` y `rawFirst()` dependen de bindings parametrizados.
 
 ### QueryBuilder
 
-For complex queries with a fluent interface:
+Para queries más complejas con interfaz fluida:
 
 ```ts
 import { QueryBuilder } from '@varbyte/nest-worker';
@@ -195,17 +195,17 @@ const count = await new QueryBuilder(db, 'users')
   .count();
 ```
 
-### Inject D1 in Controllers
+### Inyectar D1 en controladores
 
 ```ts
 @Get()
 async getAll(@D1() db: D1Database) {
-  // db = env.DB automatically
+  // db = env.DB automáticamente
   const repo = new D1Repository(db, 'users');
   return repo.findAll();
 }
 
-// With custom binding
+// Con binding personalizado
 @Get()
 async getData(@D1('ANALYTICS_DB') db: D1Database) {
   // db = env.ANALYTICS_DB
@@ -216,46 +216,46 @@ async getData(@D1('ANALYTICS_DB') db: D1Database) {
 
 ## Middlewares
 
-### Global (app-level)
+### Globales (en la app)
 
 ```ts
 app
   .use(logger())
-  .use(cors({ origin: 'https://my-domain.com' }))
+  .use(cors({ origin: 'https://mi-dominio.com' }))
   .use(rateLimit({ windowMs: 60_000, max: 100 }));
 ```
 
-### Per controller or route
+### Por controlador o ruta
 
 ```ts
 @Controller('admin')
-@UseMiddleware(bearerAuth({ tokenEnvKey: 'ADMIN_TOKEN' }))  // applies to all routes
+@UseMiddleware(bearerAuth({ tokenEnvKey: 'ADMIN_TOKEN' }))  // aplica a todas las rutas
 export class AdminController {
 
   @Delete(':id')
-  @UseMiddleware(bearerAuth({ staticToken: 'super-secret' }))  // this route only
+  @UseMiddleware(bearerAuth({ staticToken: 'super-secret' }))  // solo esta ruta
   remove(@Param('id') id: string) { ... }
 }
 ```
 
-### Available middlewares
+### Middlewares disponibles
 
 ```ts
 // CORS
 cors({ origin: '*', methods: ['GET', 'POST'], credentials: false })
 
-// Logger (console)
+// Logger (consola)
 logger()
 
-// Rate limiting by IP
+// Rate limiting por IP
 rateLimit({ windowMs: 60_000, max: 60 })
 
 // Bearer Token auth
-bearerAuth({ tokenEnvKey: 'API_SECRET' })   // reads env.API_SECRET
-bearerAuth({ staticToken: 'my-token' })     // static token (dev only)
+bearerAuth({ tokenEnvKey: 'API_SECRET' })   // lee env.API_SECRET
+bearerAuth({ staticToken: 'mi-token' })     // token fijo (dev only)
 ```
 
-### Custom Middleware
+### Middleware personalizado
 
 ```ts
 import { MiddlewareFn } from '@varbyte/nest-worker';
@@ -263,15 +263,15 @@ import { MiddlewareFn } from '@varbyte/nest-worker';
 const myMiddleware: MiddlewareFn = async (req, env, ctx) => {
   const token = req.headers.get('X-Api-Key');
   if (!token) {
-    return new Response('Unauthorized', { status: 401 });
+    return new Response('No autorizado', { status: 401 });
   }
-  // If no Response is returned, execution continues to the next middleware/handler
+  // Si no retorna Response, continúa al siguiente middleware/handler
 };
 ```
 
 ---
 
-## HTTP Exceptions
+## Excepciones HTTP
 
 ```ts
 import {
@@ -284,42 +284,42 @@ import {
   HttpException,
 } from '@varbyte/nest-worker';
 
-// In any handler or service
-throw new NotFoundException('User not found');
-throw new BadRequestException('Invalid email', { field: 'email' });
-throw new HttpException('Custom error', 422);
+// En cualquier handler o servicio
+throw new NotFoundException('Usuario no encontrado');
+throw new BadRequestException('Email inválido', { field: 'email' });
+throw new HttpException('Error custom', 422);
 
-// The framework catches them and responds with the correct status automatically
+// El framework las captura y responde automáticamente con el status correcto
 ```
 
-> **Production safety:** When `APP_ENV` is set to `"production"`, unexpected internal errors return a generic message instead of leaking error details.
+> **Seguridad en producción:** Cuando `APP_ENV` está configurado como `"production"`, los errores internos inesperados devuelven un mensaje genérico en lugar de filtrar detalles del error.
 
 ---
 
-## Handler Responses
+## Respuestas del handler
 
-The framework automatically converts what you return:
+El framework convierte automáticamente lo que retornas:
 
-| Return Value | Response |
-|-------------|----------|
-| `object` / `array` | `200 JSON` |
+| Retorno | Respuesta |
+|---------|-----------|
+| `objeto` / `array` | `200 JSON` |
 | `string` | `200 text/plain` |
 | `undefined` / `null` | `204 No Content` |
-| `Response` | Used as-is |
-| `throw HttpException` | Corresponding status in JSON |
+| `Response` | Se usa tal cual |
+| `throw HttpException` | Status correspondiente en JSON |
 
 ---
 
-## Dependency Injection
+## Inyección de dependencias
 
-### Provider Types
+### Tipos de providers
 
-| Type | Example | Description |
+| Tipo | Ejemplo | Descripción |
 |------|---------|-------------|
-| Class | `MyService` | Auto-instantiated with `new` |
-| `useClass` | `{ provide: TOKEN, useClass: MyService }` | Alias to another class |
-| `useValue` | `{ provide: 'CONFIG', useValue: { key: 'val' } }` | Static value |
-| `useFactory` | `{ provide: TOKEN, useFactory: (dep) => dep.init(), inject: [Dep] }` | Factory function |
+| Clase | `MyService` | Auto-instanciado con `new` |
+| `useClass` | `{ provide: TOKEN, useClass: MyService }` | Alias a otra clase |
+| `useValue` | `{ provide: 'CONFIG', useValue: { key: 'val' } }` | Valor estático |
+| `useFactory` | `{ provide: TOKEN, useFactory: (dep) => dep.init(), inject: [Dep] }` | Función factoría |
 
 ```ts
 @Module({
@@ -334,7 +334,7 @@ class AppModule {}
 
 ---
 
-## Recommended Project Structure
+## Estructura de proyecto recomendada
 
 ```
 my-worker/
@@ -350,13 +350,13 @@ my-worker/
 │       ├── auth.controller.ts
 │       ├── auth.service.ts
 │       └── auth.module.ts
-├── worker.ts               # Main entrypoint
+├── worker.ts               # Entrypoint principal
 ├── wrangler.toml
 ├── tsconfig.json
 └── package.json
 ```
 
-### Multi-module example
+### Ejemplo con módulos separados
 
 ```ts
 // modules/users/users.module.ts
@@ -375,33 +375,33 @@ class AppModule {}
 
 ---
 
-## D1 Commands
+## Comandos D1
 
 ```bash
-# Create database
+# Crear base de datos
 wrangler d1 create my-app-db
 
-# Run migration
+# Ejecutar migración
 wrangler d1 execute my-app-db --file=./migrations/001_init.sql
 
-# Seed data
+# Seed de datos
 wrangler d1 execute my-app-db --file=./migrations/002_seed.sql
 
-# Direct query
+# Query directa
 wrangler d1 execute my-app-db --command="SELECT * FROM users"
 
-# Local dev (D1 included)
+# Dev local (D1 incluido)
 wrangler dev
 
 # Deploy
 wrangler deploy
 
-# Secrets
+# Secretos
 wrangler secret put API_SECRET
 ```
 
 ---
 
-## License
+## Licencia
 
 MIT © [Daniel Vargas](https://github.com/varbyte-dev)
