@@ -41,6 +41,9 @@
     "typescript": "^5.3.3",
     "@varbyte/nest-worker": "^0.1.2"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=18"
   }
