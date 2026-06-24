@@ -9,7 +9,7 @@ import {
 } from "./types";
 import { HttpException, BadRequestException } from "./exceptions";
 import { Container } from "./container";
-import { getCorsHeaders } from "./middlewares";
+import { getCorsHeaders, setRequestLogError } from "./middlewares";
 
 const CONTROLLER_KEY = "__controller__";
 const ROUTES_KEY = "__routes__";
@@ -142,6 +142,7 @@ export class Router {
     ctx: ExecutionContext,
     error: unknown,
   ): Promise<Response> {
+    setRequestLogError(request, error);
     const response = await toErrorResponse(error, {
       request,
       env,

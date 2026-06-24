@@ -337,6 +337,7 @@ requestLogger()
 requestLogger({
   json: true,
   requestIdHeader: 'X-Request-Id',
+  formatError: (error) => ({ name: 'DomainError', message: 'redacted' }),
   sink: (entry) => console.log(entry),
 })
 
@@ -357,7 +358,8 @@ bearerAuth({ staticToken: 'mi-token' })     // token fijo (dev only)
 
 > **Logging:** `logger()` conserva el log original de inicio de request.
 > Usa `requestLogger()` cuando necesitas request ids, status final de respuesta
-> y duración de request en logs más adecuados para producción.
+> duración de request y resúmenes de errores manejados en logs más adecuados
+> para producción.
 
 ### Middleware personalizado
 

@@ -43,6 +43,7 @@ export {
 export type {
   CorsOptions,
   RequestLogEntry,
+  RequestLogError,
   RequestLoggerOptions,
   BearerAuthOptions,
   RateLimitOptions,

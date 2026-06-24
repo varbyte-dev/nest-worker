@@ -56,6 +56,7 @@ import type {
   PipeFn,
   RateLimitOptions,
   RequestLogEntry,
+  RequestLogError,
   RequestLoggerOptions,
   RouteDefinition,
   WorkerEnv,
@@ -113,7 +114,19 @@ describe("public API contract", () => {
     const corsOptions: CorsOptions = { origin: "*" };
     const authOptions: BearerAuthOptions = { staticToken: "secret" };
     const rateLimitOptions: RateLimitOptions = { max: 10 };
-    const requestLoggerOptions: RequestLoggerOptions = { json: true };
+    const requestLoggerOptions: RequestLoggerOptions = {
+      json: true,
+      includeError: true,
+      formatError: (error) => ({
+        name: error instanceof Error ? error.name : "unknown",
+      }),
+    };
+    const requestLogError: RequestLogError = {
+      name: "BadRequestException",
+      message: "Invalid",
+      statusCode: 400,
+      cause: "validation",
+    };
     const logEntry: RequestLogEntry = {
       timestamp: "2026-06-24T00:00:00.000Z",
       requestId: "request-id",
@@ -121,6 +134,7 @@ describe("public API contract", () => {
       path: "/health",
       status: 200,
       durationMs: 1,
+      error: requestLogError,
     };
     const env: WorkerEnv = { APP_ENV: "test" };
     const preparedStatement = {} as D1PreparedStatement;
@@ -142,6 +156,7 @@ describe("public API contract", () => {
       authOptions,
       rateLimitOptions,
       requestLoggerOptions,
+      requestLogError,
       logEntry,
       env,
       preparedStatement,
@@ -149,7 +164,7 @@ describe("public API contract", () => {
       result,
       pipeContext,
       errorFilterContext,
-    ]).toHaveLength(19);
+    ]).toHaveLength(20);
   });
 });
 
