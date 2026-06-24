@@ -1,7 +1,7 @@
 import { ErrorFilterFn, MiddlewareFn } from "./types";
 import { Router } from "./router";
 import { Container } from "./container";
-import { finalizeRequestLogging } from "./middlewares";
+import { finalizeRequestLogging } from "./request-context";
 
 export interface WorkerEnv {
   [key: string]: unknown;

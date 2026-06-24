@@ -39,7 +39,7 @@ export {
   bearerAuth,
   devRateLimit,
   rateLimit,
-} from './core/middlewares';
+} from './extras/middlewares';
 export type {
   CorsOptions,
   RequestLogEntry,
@@ -47,7 +47,7 @@ export type {
   RequestLoggerOptions,
   BearerAuthOptions,
   RateLimitOptions,
-} from './core/middlewares';
+} from './extras/middlewares';
 
 // Exceptions
 export {
