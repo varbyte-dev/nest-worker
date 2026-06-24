@@ -23,6 +23,7 @@ export {
   Env,
   D1,
   UseMiddleware,
+  UsePipe,
 } from './decorators/index';
 export type { ModuleOptions } from './decorators/index';
 
@@ -56,6 +57,8 @@ export type {
   HttpMethod,
   RouteDefinition,
   MiddlewareFn,
+  PipeContext,
+  PipeFn,
   ParamMetadata,
   D1Database,
   D1PreparedStatement,

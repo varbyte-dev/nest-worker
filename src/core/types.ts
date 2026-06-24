@@ -20,6 +20,19 @@ export type MiddlewareFn = (
   ctx: ExecutionContext,
 ) => Promise<Response | void> | Response | void;
 
+export interface PipeContext {
+  request: Request;
+  env: Record<string, unknown>;
+  ctx: ExecutionContext;
+  params: Record<string, string>;
+  route: RouteDefinition;
+}
+
+export type PipeFn = (
+  args: unknown[],
+  context: PipeContext,
+) => Promise<unknown[] | void> | unknown[] | void;
+
 export type InjectionToken = string | symbol | (new (...args: any[]) => any);
 
 export interface ParamMetadata {

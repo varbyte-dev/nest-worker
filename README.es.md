@@ -352,6 +352,29 @@ const myMiddleware: MiddlewareFn = async (req, env, ctx) => {
 };
 ```
 
+### Pipes de validación
+
+Los pipes se ejecutan después de resolver los parámetros del handler y antes de
+llamar al método del controlador. Úsalos para validar o transformar argumentos
+sin agregar una librería de validación al core del framework.
+
+```ts
+import { BadRequestException, PipeFn, UsePipe } from '@varbyte/nest-worker';
+
+const requireName: PipeFn = (args) => {
+  const body = args[0] as { name?: unknown };
+  if (typeof body.name !== 'string') {
+    throw new BadRequestException('name is required', { field: 'name' });
+  }
+};
+
+@Post()
+@UsePipe(requireName)
+create(@Body() body: { name: string }) {
+  return this.users.create(body);
+}
+```
+
 ---
 
 ## Excepciones HTTP

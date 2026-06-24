@@ -661,7 +661,9 @@ Middlewares run in the order they are registered:
 // 2. cors (global)
 // 3. Controller-level middlewares (from @UseMiddleware on the class)
 // 4. Route-level middlewares (from @UseMiddleware on the method)
-// 5. Route handler
+// 5. Controller-level pipes (from @UsePipe on the class)
+// 6. Route-level pipes (from @UsePipe on the method)
+// 7. Route handler
 
 app
   .use(logger())       // 1st
@@ -672,14 +674,34 @@ app
 export class ItemsController {
   @Get()
   @UseMiddleware(mw2)  // 4th — only for this route
+  @UsePipe(pipe1)      // 6th — validates/transforms resolved args
   list() {
-    // 5th
+    // 7th
     return { items: [] };
   }
 }
 ```
 
 If any middleware returns a `Response`, the chain stops immediately.
+
+### Validation Pipes
+
+```ts
+import { BadRequestException, Body, PipeFn, Post, UsePipe } from '@varbyte/nest-worker';
+
+const requireEmail: PipeFn = (args) => {
+  const body = args[0] as { email?: unknown };
+  if (typeof body.email !== 'string') {
+    throw new BadRequestException('email is required', { field: 'email' });
+  }
+};
+
+@Post()
+@UsePipe(requireEmail)
+create(@Body() body: { email: string }) {
+  return body;
+}
+```
 
 ---
 
