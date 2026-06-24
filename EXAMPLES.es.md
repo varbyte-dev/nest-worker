@@ -505,7 +505,7 @@ export class ConfigController {
 ```ts
 // worker.ts
 import 'reflect-metadata';
-import { Module, createApplication, cors, logger, rateLimit } from '@varbyte/nest-worker';
+import { Module, createApplication, cors, logger, devRateLimit } from '@varbyte/nest-worker';
 import { AppController } from './app.controller';
 
 @Module({ controllers: [AppController] })
@@ -520,13 +520,18 @@ app
     methods: ['GET', 'POST'],
     credentials: true,
   }))
-  .use(rateLimit({
+  .use(devRateLimit({
     windowMs: 60_000,  // 1 minuto
     max: 100,          // 100 peticiones por minuto
   }));
 
 export default app.handler;
 ```
+
+> `devRateLimit()` usa memoria local y está pensado para desarrollo/tests. No
+> es production-safe en Cloudflare Workers; para producción usa Durable Objects,
+> KV entendiendo sus tradeoffs de consistencia, o controles de la plataforma
+> Cloudflare.
 
 ### Auth por ruta con Bearer Token
 
@@ -891,7 +896,7 @@ export class HealthController {
 ```ts
 // worker.ts
 import 'reflect-metadata';
-import { Module, createApplication, cors, logger, rateLimit } from '@varbyte/nest-worker';
+import { Module, createApplication, cors, logger, devRateLimit } from '@varbyte/nest-worker';
 import { UserController } from './user.controller';
 import { UserService } from './user.service';
 import { HealthController } from './health.controller';
@@ -903,7 +908,7 @@ import { HealthController } from './health.controller';
 class AppModule {}
 
 const app = createApplication(AppModule);
-app.use(logger()).use(cors({ origin: '*' })).use(rateLimit({ windowMs: 60_000, max: 60 }));
+app.use(logger()).use(cors({ origin: '*' })).use(devRateLimit({ windowMs: 60_000, max: 60 }));
 
 export default app.handler;
 ```

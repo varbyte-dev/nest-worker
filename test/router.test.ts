@@ -10,6 +10,8 @@ import {
   Post,
   cors,
   createApplication,
+  devRateLimit,
+  rateLimit,
 } from "../src/index";
 
 const ctx = {} as ExecutionContext;
@@ -48,6 +50,18 @@ function corsApp(options: Parameters<typeof cors>[0]) {
   }
 
   return appFor(HealthController).use(cors(options));
+}
+
+function rateLimitApp(options: Parameters<typeof devRateLimit>[0]) {
+  @Controller("limited")
+  class LimitedController {
+    @Get()
+    check() {
+      return { ok: true };
+    }
+  }
+
+  return appFor(LimitedController).use(devRateLimit(options));
 }
 
 describe("Router", () => {
@@ -293,5 +307,35 @@ describe("Router", () => {
       "Content-Type, Authorization",
     );
     expect(response.headers.get("Access-Control-Max-Age")).toBe("600");
+  });
+
+  it("should limit requests in memory for the same client IP", async () => {
+    const app = rateLimitApp({ windowMs: 60_000, max: 1 });
+    const init = { headers: { "CF-Connecting-IP": "203.0.113.10" } };
+
+    const first = await handle(app, "/limited", init);
+    const second = await handle(app, "/limited", init);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(429);
+    expect(second.headers.get("Retry-After")).toBeTruthy();
+    expect(await json(second)).toEqual({ error: "Too Many Requests" });
+  });
+
+  it("should track in-memory rate limits per client IP", async () => {
+    const app = rateLimitApp({ windowMs: 60_000, max: 1 });
+
+    await handle(app, "/limited", {
+      headers: { "CF-Connecting-IP": "203.0.113.10" },
+    });
+    const otherClient = await handle(app, "/limited", {
+      headers: { "CF-Connecting-IP": "203.0.113.11" },
+    });
+
+    expect(otherClient.status).toBe(200);
+  });
+
+  it("should keep rateLimit as a compatibility alias", () => {
+    expect(rateLimit).toBe(devRateLimit);
   });
 });

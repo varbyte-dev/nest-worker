@@ -287,7 +287,7 @@ async getData(@D1('ANALYTICS_DB') db: D1Database) {
 app
   .use(logger())
   .use(cors({ origin: 'https://mi-dominio.com' }))
-  .use(rateLimit({ windowMs: 60_000, max: 100 }));
+  .use(devRateLimit({ windowMs: 60_000, max: 100 }));
 ```
 
 ### Por controlador o ruta
@@ -318,12 +318,19 @@ cors({ origin: 'https://app.example', credentials: true })
 logger()
 
 // Rate limiting por IP
-rateLimit({ windowMs: 60_000, max: 60 })
+devRateLimit({ windowMs: 60_000, max: 60 })
 
 // Bearer Token auth
 bearerAuth({ tokenEnvKey: 'API_SECRET' })   // lee env.API_SECRET
 bearerAuth({ staticToken: 'mi-token' })     // token fijo (dev only)
 ```
+
+> **Rate limiting:** `devRateLimit()` usa estado en memoria. Es útil para
+> desarrollo local y tests, pero no es un rate limiter durable ni globalmente
+> consistente en Cloudflare Workers. Para producción, usa Durable Objects, KV
+> entendiendo sus tradeoffs de consistencia, o controles de la plataforma
+> Cloudflare. El export anterior `rateLimit()` queda como alias de compatibilidad
+> deprecado.
 
 ### Middleware personalizado
 

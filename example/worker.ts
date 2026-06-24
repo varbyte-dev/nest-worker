@@ -4,7 +4,7 @@ import {
   createApplication,
   cors,
   logger,
-  rateLimit,
+  devRateLimit,
 } from "../src/index";
 import { UsersController } from "./users.controller";
 import { UsersService } from "./users.service";
@@ -24,7 +24,7 @@ const app = createApplication(AppModule);
 app
   .use(logger())
   .use(cors({ origin: "*", credentials: false }))
-  .use(rateLimit({ windowMs: 60_000, max: 10 }));
+  .use(devRateLimit({ windowMs: 60_000, max: 10 }));
 
 // ─── Cloudflare Worker export ─────────────────────────────────────
 
