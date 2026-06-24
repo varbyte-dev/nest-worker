@@ -49,6 +49,20 @@ export type {
   RateLimitOptions,
 } from './extras/middlewares';
 
+// Validation helpers
+export {
+  createValidationPipe,
+  validateBody,
+} from './extras/validation';
+export type {
+  ValidationContext,
+  ValidationIssue,
+  ValidationPipeOptions,
+  ValidationResult,
+  ValidationRule,
+  ValidatorFn,
+} from './extras/validation';
+
 // Exceptions
 export {
   HttpException,
