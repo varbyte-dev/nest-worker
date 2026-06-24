@@ -20,6 +20,15 @@
 
 ---
 
+## Política de mantenimiento
+
+Las decisiones de API pública y releases siguen
+[docs/API_RELEASE_POLICY.md](docs/API_RELEASE_POLICY.md). Revisa esta política
+antes de cambiar exports, decoradores, código generado, comandos de CLI,
+comportamiento documentado o notas de release.
+
+---
+
 ## CLI — `@varbyte/nest-worker-cli`
 
 Acelera tu desarrollo con la CLI oficial:
