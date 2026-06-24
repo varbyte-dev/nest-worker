@@ -451,6 +451,14 @@ const count = await new QueryBuilder(db, 'users')
   .where('active', 1)
   .count();
 
+// Explicit multi-value and null operators
+const activeAdmins = await new QueryBuilder<User>(db, 'users')
+  .whereIn('role', ['admin', 'owner'])
+  .whereNotIn('status', ['blocked', 'pending'])
+  .whereNull('deleted_at')
+  .whereBetween('created_at', '2026-01-01', '2026-12-31')
+  .all();
+
 // Pagination
 const page = await new QueryBuilder(db, 'users')
   .orderBy('created_at', 'DESC')

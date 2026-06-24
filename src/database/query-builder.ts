@@ -1,6 +1,21 @@
 import { D1Database, sanitizeIdentifier } from "../core/types";
 
 type OrderDirection = "ASC" | "DESC";
+type ScalarOperator =
+  | "="
+  | "!="
+  | "<>"
+  | "<"
+  | ">"
+  | "<="
+  | ">="
+  | "LIKE"
+  | "NOT LIKE";
+type WhereClause =
+  | { type: "scalar"; col: string; op: ScalarOperator; val: unknown }
+  | { type: "in"; col: string; values: unknown[]; negate: boolean }
+  | { type: "between"; col: string; min: unknown; max: unknown }
+  | { type: "null"; col: string; negate: boolean };
 
 /**
  * Fluent query builder for D1.
@@ -8,7 +23,7 @@ type OrderDirection = "ASC" | "DESC";
  */
 export class QueryBuilder<T = Record<string, unknown>> {
   private _select: string[] = ["*"];
-  private _wheres: Array<{ col: string; op: string; val: unknown }> = [];
+  private _wheres: WhereClause[] = [];
   private _orderBy: Array<{ col: string; dir: OrderDirection }> = [];
   private _limit?: number;
   private _offset?: number;
@@ -35,8 +50,7 @@ export class QueryBuilder<T = Record<string, unknown>> {
 
   where(col: string, value: unknown, op: string = "="): this {
     sanitizeIdentifier(col);
-    // Validate SQL operator to prevent injection
-    const validOps = [
+    const scalarOps: ScalarOperator[] = [
       "=",
       "!=",
       "<>",
@@ -46,17 +60,65 @@ export class QueryBuilder<T = Record<string, unknown>> {
       ">=",
       "LIKE",
       "NOT LIKE",
-      "IN",
-      "NOT IN",
-      "IS",
-      "IS NOT",
-      "BETWEEN",
     ];
     const normalizedOp = op.toUpperCase();
-    if (!validOps.includes(normalizedOp)) {
+    if (normalizedOp === "IN" || normalizedOp === "NOT IN") {
+      const method = normalizedOp === "IN" ? "whereIn" : "whereNotIn";
+      throw new Error(`Use ${method}() for ${normalizedOp} clauses`);
+    }
+    if (normalizedOp === "BETWEEN") {
+      throw new Error("Use whereBetween() for BETWEEN clauses");
+    }
+    if (normalizedOp === "IS" || normalizedOp === "IS NOT") {
+      throw new Error(
+        `Use ${normalizedOp === "IS" ? "whereNull" : "whereNotNull"}() for NULL checks`,
+      );
+    }
+    if (!scalarOps.includes(normalizedOp as ScalarOperator)) {
       throw new Error(`Invalid SQL operator: "${op}"`);
     }
-    this._wheres.push({ col, op: normalizedOp, val: value });
+    this._wheres.push({
+      type: "scalar",
+      col,
+      op: normalizedOp as ScalarOperator,
+      val: value,
+    });
+    return this;
+  }
+
+  whereIn(col: string, values: unknown[]): this {
+    return this.addInClause(col, values, false);
+  }
+
+  whereNotIn(col: string, values: unknown[]): this {
+    return this.addInClause(col, values, true);
+  }
+
+  whereBetween(col: string, min: unknown, max: unknown): this {
+    sanitizeIdentifier(col);
+    this._wheres.push({ type: "between", col, min, max });
+    return this;
+  }
+
+  whereNull(col: string): this {
+    sanitizeIdentifier(col);
+    this._wheres.push({ type: "null", col, negate: false });
+    return this;
+  }
+
+  whereNotNull(col: string): this {
+    sanitizeIdentifier(col);
+    this._wheres.push({ type: "null", col, negate: true });
+    return this;
+  }
+
+  private addInClause(col: string, values: unknown[], negate: boolean): this {
+    sanitizeIdentifier(col);
+    if (!values.length) {
+      const method = negate ? "whereNotIn" : "whereIn";
+      throw new Error(`${method}() requires at least one value`);
+    }
+    this._wheres.push({ type: "in", col, values, negate });
     return this;
   }
 
@@ -94,10 +156,7 @@ export class QueryBuilder<T = Record<string, unknown>> {
     let sql = `SELECT ${selectCols.join(", ")} FROM ${safeTable}`;
 
     if (this._wheres.length) {
-      const clauses = this._wheres.map(({ col, op, val }) => {
-        bindings.push(val);
-        return `${sanitizeIdentifier(col)} ${op} ?`;
-      });
+      const clauses = this.buildWhereClauses(bindings);
       sql += ` WHERE ${clauses.join(" AND ")}`;
     }
 
@@ -136,10 +195,7 @@ export class QueryBuilder<T = Record<string, unknown>> {
     const safeTable = sanitizeIdentifier(this.table);
     let sql = `SELECT COUNT(*) as count FROM ${safeTable}`;
     if (this._wheres.length) {
-      const clauses = this._wheres.map(({ col, op, val }) => {
-        bindings.push(val);
-        return `${sanitizeIdentifier(col)} ${op} ?`;
-      });
+      const clauses = this.buildWhereClauses(bindings);
       sql += ` WHERE ${clauses.join(" AND ")}`;
     }
     const row = await this.db
@@ -147,5 +203,30 @@ export class QueryBuilder<T = Record<string, unknown>> {
       .bind(...bindings)
       .first<{ count: number }>();
     return row?.count ?? 0;
+  }
+
+  private buildWhereClauses(bindings: unknown[]): string[] {
+    return this._wheres.map((where) => {
+      const col = sanitizeIdentifier(where.col);
+
+      switch (where.type) {
+        case "scalar":
+          bindings.push(where.val);
+          return `${col} ${where.op} ?`;
+
+        case "in": {
+          bindings.push(...where.values);
+          const placeholders = where.values.map(() => "?").join(", ");
+          return `${col} ${where.negate ? "NOT IN" : "IN"} (${placeholders})`;
+        }
+
+        case "between":
+          bindings.push(where.min, where.max);
+          return `${col} BETWEEN ? AND ?`;
+
+        case "null":
+          return `${col} IS ${where.negate ? "NOT " : ""}NULL`;
+      }
+    });
   }
 }
