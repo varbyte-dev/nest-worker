@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - master
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate packages
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck core
+        run: pnpm typecheck
+
+      - name: Test core
+        run: pnpm test
+
+      - name: Build core
+        run: pnpm build
+
+      - name: Typecheck CLI
+        run: pnpm --filter @varbyte/nest-worker-cli typecheck
+
+      - name: Build CLI
+        run: pnpm --filter @varbyte/nest-worker-cli build

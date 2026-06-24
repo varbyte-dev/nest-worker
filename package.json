@@ -56,6 +56,7 @@
     "@cloudflare/workers-types": "^4.20241205.0",
     "commit-and-tag-version": "^12.7.1",
     "typescript": "^5.3.3",
+    "urlpattern-polyfill": "^10.1.0",
     "vitest": "^4.1.9",
     "wrangler": "^3.40.0"
   },
