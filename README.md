@@ -258,6 +258,12 @@ const users = await new QueryBuilder<User>(db, 'users')
 const count = await new QueryBuilder(db, 'users')
   .where('role', 'admin')
   .count();
+
+const activeAdmins = await new QueryBuilder<User>(db, 'users')
+  .whereIn('role', ['admin', 'owner'])
+  .whereNull('deleted_at')
+  .whereBetween('created_at', '2026-01-01', '2026-12-31')
+  .all();
 ```
 
 ### Inject D1 in Controllers

@@ -42,6 +42,20 @@ describe('QueryBuilder', () => {
       expect(() => qb.where('id', 1, '')).toThrow();
     });
 
+    it('should reject non-scalar operators in generic where', () => {
+      const { db } = createMockD1();
+      const qb = new QueryBuilder(db, 'users');
+      expect(() => qb.where('id', [1, 2], 'IN')).toThrow(
+        'Use whereIn() for IN clauses',
+      );
+      expect(() => qb.where('id', [1, 2], 'BETWEEN')).toThrow(
+        'Use whereBetween() for BETWEEN clauses',
+      );
+      expect(() => qb.where('deleted_at', null, 'IS')).toThrow(
+        'Use whereNull() for NULL checks',
+      );
+    });
+
     it('should reject malicious column names in orderBy', () => {
       const { db } = createMockD1();
       const qb = new QueryBuilder(db, 'users');
@@ -106,6 +120,67 @@ describe('QueryBuilder', () => {
       expect(statements[0].sql).toContain('COUNT(*)');
       expect(statements[0].sql).toContain('WHERE role = ?');
       expect(statements[0].bindings).toEqual(['admin']);
+    });
+
+    it('should build WHERE IN clauses', async () => {
+      const { db, statements } = createMockD1();
+      const qb = new QueryBuilder(db, 'users');
+      await qb.whereIn('role', ['admin', 'owner']).all();
+
+      expect(statements[0].sql).toContain('WHERE role IN (?, ?)');
+      expect(statements[0].bindings).toEqual(['admin', 'owner']);
+    });
+
+    it('should build WHERE NOT IN clauses', async () => {
+      const { db, statements } = createMockD1();
+      const qb = new QueryBuilder(db, 'users');
+      await qb.whereNotIn('role', ['guest', 'blocked']).all();
+
+      expect(statements[0].sql).toContain('WHERE role NOT IN (?, ?)');
+      expect(statements[0].bindings).toEqual(['guest', 'blocked']);
+    });
+
+    it('should reject empty IN clauses', () => {
+      const { db } = createMockD1();
+      const qb = new QueryBuilder(db, 'users');
+
+      expect(() => qb.whereIn('id', [])).toThrow(
+        'whereIn() requires at least one value',
+      );
+    });
+
+    it('should build WHERE BETWEEN clauses', async () => {
+      const { db, statements } = createMockD1();
+      const qb = new QueryBuilder(db, 'users');
+      await qb.whereBetween('created_at', '2026-01-01', '2026-12-31').all();
+
+      expect(statements[0].sql).toContain('WHERE created_at BETWEEN ? AND ?');
+      expect(statements[0].bindings).toEqual(['2026-01-01', '2026-12-31']);
+    });
+
+    it('should build NULL checks without bindings', async () => {
+      const { db, statements } = createMockD1();
+      const qb = new QueryBuilder(db, 'users');
+      await qb.whereNull('deleted_at').whereNotNull('email').all();
+
+      expect(statements[0].sql).toContain(
+        'WHERE deleted_at IS NULL AND email IS NOT NULL',
+      );
+      expect(statements[0].bindings).toEqual([]);
+    });
+
+    it('should reuse explicit operators in COUNT queries', async () => {
+      const { db, statements } = createMockD1();
+      const qb = new QueryBuilder(db, 'users');
+      await qb
+        .whereIn('role', ['admin', 'owner'])
+        .whereNull('deleted_at')
+        .count();
+
+      expect(statements[0].sql).toContain(
+        'WHERE role IN (?, ?) AND deleted_at IS NULL',
+      );
+      expect(statements[0].bindings).toEqual(['admin', 'owner']);
     });
   });
 });
