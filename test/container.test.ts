@@ -155,6 +155,43 @@ describe("Container", () => {
       expect(resolved).toBeInstanceOf(SharedService);
       expect(resolved.getData()).toBe("shared");
     });
+
+    it("should resolve imported module controllers with their internal providers", () => {
+      const container = new Container();
+
+      class InternalService {
+        getData() {
+          return "internal";
+        }
+      }
+
+      class ImportedController {
+        constructor(public readonly service: InternalService) {}
+      }
+
+      Reflect.defineMetadata("__deps__", [InternalService], ImportedController);
+
+      const ImportedModule = createModule({
+        providers: [InternalService],
+        controllers: [ImportedController],
+        exports: [],
+      });
+
+      const RootModule = createModule({
+        imports: [ImportedModule],
+      });
+
+      container.register(RootModule);
+
+      const controller = container.resolveController(ImportedController);
+
+      expect(controller).toBeInstanceOf(ImportedController);
+      expect(controller.service).toBeInstanceOf(InternalService);
+      expect(controller.service.getData()).toBe("internal");
+      expect(() => container.resolve(InternalService)).toThrow(
+        "No provider found",
+      );
+    });
   });
 
   describe("error handling", () => {
