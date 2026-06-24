@@ -35,11 +35,18 @@ export { QueryBuilder } from './database/query-builder';
 export {
   cors,
   logger,
+  requestLogger,
   bearerAuth,
   devRateLimit,
   rateLimit,
 } from './core/middlewares';
-export type { CorsOptions, BearerAuthOptions, RateLimitOptions } from './core/middlewares';
+export type {
+  CorsOptions,
+  RequestLogEntry,
+  RequestLoggerOptions,
+  BearerAuthOptions,
+  RateLimitOptions,
+} from './core/middlewares';
 
 // Exceptions
 export {

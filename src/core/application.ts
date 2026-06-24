@@ -1,6 +1,7 @@
 import { MiddlewareFn } from "./types";
 import { Router } from "./router";
 import { Container } from "./container";
+import { finalizeRequestLogging } from "./middlewares";
 
 export interface WorkerEnv {
   [key: string]: unknown;
@@ -38,10 +39,13 @@ export class NestWorkerApplication {
     // Run global middlewares (with ctx)
     for (const mw of this.globalMiddlewares) {
       const result = await mw(request, env, ctx);
-      if (result instanceof Response) return result;
+      if (result instanceof Response) {
+        return finalizeRequestLogging(request, result);
+      }
     }
 
-    return this.router.resolve(request, env, ctx);
+    const response = await this.router.resolve(request, env, ctx);
+    return finalizeRequestLogging(request, response);
   }
 
   /** Returns the fetch handler to export from the Worker */

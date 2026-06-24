@@ -291,7 +291,7 @@ async getData(@D1('ANALYTICS_DB') db: D1Database) {
 
 ```ts
 app
-  .use(logger())
+  .use(requestLogger())
   .use(cors({ origin: 'https://mi-dominio.com' }))
   .use(devRateLimit({ windowMs: 60_000, max: 100 }));
 ```
@@ -323,6 +323,14 @@ cors({ origin: 'https://app.example', credentials: true })
 // Logger (consola)
 logger()
 
+// Logger de request/response con request ids
+requestLogger()
+requestLogger({
+  json: true,
+  requestIdHeader: 'X-Request-Id',
+  sink: (entry) => console.log(entry),
+})
+
 // Rate limiting por IP
 devRateLimit({ windowMs: 60_000, max: 60 })
 
@@ -337,6 +345,10 @@ bearerAuth({ staticToken: 'mi-token' })     // token fijo (dev only)
 > entendiendo sus tradeoffs de consistencia, o controles de la plataforma
 > Cloudflare. El export anterior `rateLimit()` queda como alias de compatibilidad
 > deprecado.
+
+> **Logging:** `logger()` conserva el log original de inicio de request.
+> Usa `requestLogger()` cuando necesitas request ids, status final de respuesta
+> y duración de request en logs más adecuados para producción.
 
 ### Middleware personalizado
 

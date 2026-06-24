@@ -91,6 +91,127 @@ export function logger(): MiddlewareFn {
   };
 }
 
+export interface RequestLogEntry {
+  timestamp: string;
+  requestId: string;
+  method: string;
+  path: string;
+  status: number;
+  durationMs: number;
+}
+
+export interface RequestLoggerOptions {
+  /**
+   * Header used to read and return the request id.
+   *
+   * Defaults to X-Request-Id.
+   */
+  requestIdHeader?: string;
+  generateRequestId?: () => string;
+  json?: boolean;
+  sink?: (entry: RequestLogEntry) => void;
+}
+
+interface RequestLoggerState {
+  requestId: string;
+  requestIdHeader: string;
+  startedAt: number;
+  method: string;
+  path: string;
+  json: boolean;
+  sink?: (entry: RequestLogEntry) => void;
+}
+
+const requestLoggerMap = new WeakMap<Request, RequestLoggerState>();
+
+export function requestLogger(options: RequestLoggerOptions = {}): MiddlewareFn {
+  const {
+    requestIdHeader = "X-Request-Id",
+    generateRequestId = createRequestId,
+    json = false,
+    sink,
+  } = options;
+
+  return (req, _env, _ctx) => {
+    const url = new URL(req.url);
+    const requestId =
+      req.headers.get(requestIdHeader) ||
+      req.headers.get(requestIdHeader.toLowerCase()) ||
+      generateRequestId();
+
+    requestLoggerMap.set(req, {
+      requestId,
+      requestIdHeader,
+      startedAt: now(),
+      method: req.method,
+      path: url.pathname,
+      json,
+      sink,
+    });
+  };
+}
+
+export function finalizeRequestLogging(
+  req: Request,
+  response: Response,
+): Response {
+  const state = requestLoggerMap.get(req);
+  if (!state) return response;
+
+  requestLoggerMap.delete(req);
+  const completedAt = now();
+  const entry: RequestLogEntry = {
+    timestamp: new Date().toISOString(),
+    requestId: state.requestId,
+    method: state.method,
+    path: state.path,
+    status: response.status,
+    durationMs: Math.max(0, Math.round(completedAt - state.startedAt)),
+  };
+
+  const loggedResponse = new Response(response.body, response);
+  loggedResponse.headers.set(state.requestIdHeader, state.requestId);
+
+  try {
+    writeRequestLog(entry, state);
+  } catch (error) {
+    console.error("requestLogger sink failed", error);
+  }
+
+  return loggedResponse;
+}
+
+function writeRequestLog(
+  entry: RequestLogEntry,
+  state: RequestLoggerState,
+): void {
+  if (state.sink) {
+    state.sink(entry);
+    return;
+  }
+
+  if (state.json) {
+    console.log(JSON.stringify(entry));
+    return;
+  }
+
+  console.log(
+    `[${entry.timestamp}] ${entry.requestId} ${entry.method} ${entry.path} ${entry.status} ${entry.durationMs}ms`,
+  );
+}
+
+function createRequestId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function now(): number {
+  return typeof performance !== "undefined" ? performance.now() : Date.now();
+}
+
 // ─── Bearer Token Auth Guard ──────────────────────────────────────
 
 export interface BearerAuthOptions {
