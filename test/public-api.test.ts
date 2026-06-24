@@ -33,11 +33,13 @@ import {
   UsePipe,
   bearerAuth,
   cors,
+  createValidationPipe,
   createApplication,
   devRateLimit,
   logger,
   rateLimit,
   requestLogger,
+  validateBody,
 } from "../src/index";
 import type {
   BearerAuthOptions,
@@ -59,6 +61,12 @@ import type {
   RequestLogError,
   RequestLoggerOptions,
   RouteDefinition,
+  ValidationContext,
+  ValidationIssue,
+  ValidationPipeOptions,
+  ValidationResult,
+  ValidationRule,
+  ValidatorFn,
   WorkerEnv,
 } from "../src/index";
 
@@ -89,6 +97,8 @@ describe("public API contract", () => {
     expect(bearerAuth).toEqual(expect.any(Function));
     expect(devRateLimit).toEqual(expect.any(Function));
     expect(rateLimit).toBe(devRateLimit);
+    expect(createValidationPipe).toEqual(expect.any(Function));
+    expect(validateBody).toEqual(expect.any(Function));
     expect(HttpException).toEqual(expect.any(Function));
     expect(BadRequestException).toEqual(expect.any(Function));
     expect(UnauthorizedException).toEqual(expect.any(Function));
@@ -140,7 +150,24 @@ describe("public API contract", () => {
     const preparedStatement = {} as D1PreparedStatement;
     const database = {} as D1Database;
     const result = {} as D1Result;
-    const pipeContext = {} as PipeContext;
+    const pipeContext = {
+      parameters: [param],
+    } as PipeContext;
+    const validationIssue: ValidationIssue = {
+      field: "email",
+      message: "email is required",
+      code: "required",
+    };
+    const validationResult: ValidationResult = [validationIssue];
+    const validationContext = {} as ValidationContext;
+    const validator: ValidatorFn = () => validationResult;
+    const validationRule: ValidationRule = {
+      type: "body",
+      validate: validator,
+    };
+    const validationOptions: ValidationPipeOptions = {
+      message: "Invalid request",
+    };
     const errorFilterContext = {} as ErrorFilterContext;
 
     expect([
@@ -163,8 +190,14 @@ describe("public API contract", () => {
       database,
       result,
       pipeContext,
+      validationIssue,
+      validationResult,
+      validationContext,
+      validator,
+      validationRule,
+      validationOptions,
       errorFilterContext,
-    ]).toHaveLength(20);
+    ]).toHaveLength(26);
   });
 });
 

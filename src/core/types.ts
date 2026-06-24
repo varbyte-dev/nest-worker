@@ -25,6 +25,7 @@ export interface PipeContext {
   env: Record<string, unknown>;
   ctx: ExecutionContext;
   params: Record<string, string>;
+  parameters: ParamMetadata[];
   route: RouteDefinition;
 }
 

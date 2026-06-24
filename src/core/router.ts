@@ -89,6 +89,7 @@ export class Router {
             env,
             ctx,
             params: pathParams,
+            parameters: paramsMeta,
             route,
           });
           const result = await instance[route.handlerName](...pipedArgs);

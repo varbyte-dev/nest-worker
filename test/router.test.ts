@@ -11,6 +11,7 @@ import {
   Param,
   Post,
   Query,
+  createValidationPipe,
   cors,
   createApplication,
   devRateLimit,
@@ -21,6 +22,7 @@ import {
   requestLogger,
   UseMiddleware,
   UsePipe,
+  validateBody,
 } from "../src/index";
 
 const ctx = {} as ExecutionContext;
@@ -885,5 +887,103 @@ describe("Router", () => {
     });
 
     expect(await json(response)).toEqual({ name: "Ada", userId: "42" });
+  });
+
+  it("should validate body parameters with lightweight validation helpers", async () => {
+    @Controller("users")
+    class UsersController {
+      @Post(":id")
+      @UsePipe(validateBody<{ name?: unknown }>((body) => {
+        if (typeof body.name !== "string") return "name is required";
+      }))
+      create(@Param("id") id: string, @Body() body: { name: string }) {
+        return { id, ...body };
+      }
+    }
+
+    const response = await handle(appFor(UsersController), "/users/42", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await json(response)).toEqual({
+      error: "Validation failed",
+      statusCode: 400,
+      details: {
+        issues: [{ message: "name is required" }],
+      },
+    });
+  });
+
+  it("should validate keyed parameters with validation pipe rules", async () => {
+    @Controller("users")
+    class UsersController {
+      @Get()
+      @UsePipe(createValidationPipe({
+        type: "query",
+        key: "limit",
+        validate: (value) => {
+          const parsed = Number(value);
+          return Number.isInteger(parsed) && parsed > 0
+            ? true
+            : { message: "limit must be a positive integer" };
+        },
+      }))
+      find(@Query("limit") limit: string) {
+        return { limit };
+      }
+    }
+
+    const response = await handle(appFor(UsersController), "/users?limit=0");
+
+    expect(response.status).toBe(400);
+    expect(await json(response)).toEqual({
+      error: "Validation failed",
+      statusCode: 400,
+      details: {
+        issues: [{
+          message: "limit must be a positive integer",
+          field: "limit",
+        }],
+      },
+    });
+  });
+
+  it("should allow validation helpers to return multiple issues", async () => {
+    @Controller("users")
+    class UsersController {
+      @Post()
+      @UsePipe(validateBody<Record<string, unknown>>((body) => {
+        const issues = [];
+        if (typeof body.name !== "string") {
+          issues.push({ field: "name", message: "name is required" });
+        }
+        if (typeof body.email !== "string") {
+          issues.push({ field: "email", message: "email is required" });
+        }
+        return issues;
+      }))
+      create(@Body() body: { name: string; email: string }) {
+        return body;
+      }
+    }
+
+    const response = await handle(appFor(UsersController), "/users", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await json(response)).toEqual({
+      error: "Validation failed",
+      statusCode: 400,
+      details: {
+        issues: [
+          { field: "name", message: "name is required" },
+          { field: "email", message: "email is required" },
+        ],
+      },
+    });
   });
 });

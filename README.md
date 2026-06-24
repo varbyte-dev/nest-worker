@@ -380,7 +380,7 @@ method is called. Use them to validate or transform handler arguments without
 adding a validation library to the framework core.
 
 ```ts
-import { BadRequestException, PipeFn, UsePipe } from '@varbyte/nest-worker';
+import { BadRequestException, PipeFn, UsePipe, validateBody } from '@varbyte/nest-worker';
 
 const requireName: PipeFn = (args) => {
   const body = args[0] as { name?: unknown };
@@ -395,6 +395,23 @@ create(@Body() body: { name: string }) {
   return this.users.create(body);
 }
 ```
+
+For common body validation, use `validateBody()` to keep the pipe small and
+dependency-free:
+
+```ts
+@Post()
+@UsePipe(validateBody<{ name?: unknown }>((body) => {
+  if (typeof body.name !== 'string') return 'name is required';
+}))
+create(@Body() body: { name: string }) {
+  return this.users.create(body);
+}
+```
+
+`createValidationPipe()` can wrap any validator function, including adapters to
+schema libraries you choose to install in your app. The framework does not add a
+validation library dependency.
 
 ---
 

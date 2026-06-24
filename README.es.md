@@ -382,7 +382,7 @@ llamar al método del controlador. Úsalos para validar o transformar argumentos
 sin agregar una librería de validación al core del framework.
 
 ```ts
-import { BadRequestException, PipeFn, UsePipe } from '@varbyte/nest-worker';
+import { BadRequestException, PipeFn, UsePipe, validateBody } from '@varbyte/nest-worker';
 
 const requireName: PipeFn = (args) => {
   const body = args[0] as { name?: unknown };
@@ -397,6 +397,23 @@ create(@Body() body: { name: string }) {
   return this.users.create(body);
 }
 ```
+
+Para validación común de body, usa `validateBody()` y mantén el pipe pequeño y
+sin dependencias:
+
+```ts
+@Post()
+@UsePipe(validateBody<{ name?: unknown }>((body) => {
+  if (typeof body.name !== 'string') return 'name is required';
+}))
+create(@Body() body: { name: string }) {
+  return this.users.create(body);
+}
+```
+
+`createValidationPipe()` puede envolver cualquier función validadora, incluyendo
+adaptadores a librerías de schemas que decidas instalar en tu app. El framework
+no agrega una dependencia de validación.
 
 ---
 
