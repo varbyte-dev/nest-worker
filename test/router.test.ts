@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   Body,
   BadRequestException,
@@ -14,6 +14,8 @@ import {
   devRateLimit,
   PipeFn,
   rateLimit,
+  RequestLogEntry,
+  requestLogger,
   UsePipe,
 } from "../src/index";
 
@@ -340,6 +342,123 @@ describe("Router", () => {
 
   it("should keep rateLimit as a compatibility alias", () => {
     expect(rateLimit).toBe(devRateLimit);
+  });
+
+  it("should log completed requests with request ids", async () => {
+    const entries: RequestLogEntry[] = [];
+
+    @Controller("health")
+    class HealthController {
+      @Get()
+      check() {
+        return { ok: true };
+      }
+    }
+
+    const app = appFor(HealthController).use(requestLogger({
+      generateRequestId: () => "generated-id",
+      sink: (entry) => entries.push(entry),
+    }));
+
+    const response = await handle(app, "/health");
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("X-Request-Id")).toBe("generated-id");
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      requestId: "generated-id",
+      method: "GET",
+      path: "/health",
+      status: 200,
+    });
+    expect(entries[0].durationMs).toBeGreaterThanOrEqual(0);
+    expect(entries[0].timestamp).toEqual(expect.any(String));
+  });
+
+  it("should preserve incoming request ids in request logs", async () => {
+    const entries: RequestLogEntry[] = [];
+
+    @Controller("health")
+    class HealthController {
+      @Get()
+      check() {
+        return { ok: true };
+      }
+    }
+
+    const app = appFor(HealthController).use(requestLogger({
+      generateRequestId: () => "unused-id",
+      sink: (entry) => entries.push(entry),
+    }));
+
+    const response = await handle(app, "/health", {
+      headers: { "X-Request-Id": "incoming-id" },
+    });
+
+    expect(response.headers.get("X-Request-Id")).toBe("incoming-id");
+    expect(entries[0].requestId).toBe("incoming-id");
+  });
+
+  it("should log responses returned by earlier middlewares", async () => {
+    const entries: RequestLogEntry[] = [];
+
+    @Controller("health")
+    class HealthController {
+      @Get()
+      check() {
+        return { ok: true };
+      }
+    }
+
+    const app = appFor(HealthController)
+      .use(requestLogger({
+        generateRequestId: () => "blocked-id",
+        sink: (entry) => entries.push(entry),
+      }))
+      .use(() => new Response("blocked", { status: 401 }));
+
+    const response = await handle(app, "/health");
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("X-Request-Id")).toBe("blocked-id");
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      requestId: "blocked-id",
+      method: "GET",
+      path: "/health",
+      status: 401,
+    });
+  });
+
+  it("should keep responses successful when request log sinks fail", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+
+    @Controller("health")
+    class HealthController {
+      @Get()
+      check() {
+        return { ok: true };
+      }
+    }
+
+    const app = appFor(HealthController).use(requestLogger({
+      generateRequestId: () => "safe-id",
+      sink: () => {
+        throw new Error("sink unavailable");
+      },
+    }));
+
+    try {
+      const response = await handle(app, "/health");
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("X-Request-Id")).toBe("safe-id");
+      expect(await json(response)).toEqual({ ok: true });
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   it("should transform handler args with route pipes", async () => {

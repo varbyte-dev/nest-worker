@@ -291,7 +291,7 @@ async getData(@D1('ANALYTICS_DB') db: D1Database) {
 
 ```ts
 app
-  .use(logger())
+  .use(requestLogger())
   .use(cors({ origin: 'https://my-domain.com' }))
   .use(devRateLimit({ windowMs: 60_000, max: 100 }));
 ```
@@ -323,6 +323,14 @@ cors({ origin: 'https://app.example', credentials: true })
 // Logger (console)
 logger()
 
+// Request/response logger with request ids
+requestLogger()
+requestLogger({
+  json: true,
+  requestIdHeader: 'X-Request-Id',
+  sink: (entry) => console.log(entry),
+})
+
 // Rate limiting by IP
 devRateLimit({ windowMs: 60_000, max: 60 })
 
@@ -336,6 +344,10 @@ bearerAuth({ staticToken: 'my-token' })     // static token (dev only)
 > production rate limiter on Cloudflare Workers. For production, use Durable
 > Objects, KV with its consistency tradeoffs, or Cloudflare platform controls.
 > The older `rateLimit()` export remains as a deprecated compatibility alias.
+
+> **Logging:** `logger()` preserves the original request-start console log.
+> Use `requestLogger()` when you need production-friendly request ids, final
+> response status, and request duration in your logs.
 
 ### Custom Middleware
 
