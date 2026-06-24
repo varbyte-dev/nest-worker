@@ -553,6 +553,140 @@ describe("Router", () => {
     }
   });
 
+  it("should include handled route errors in request logs", async () => {
+    const entries: RequestLogEntry[] = [];
+
+    @Controller("boom")
+    class BoomController {
+      @Get()
+      explode() {
+        throw new Error("route exploded");
+      }
+    }
+
+    const app = appFor(BoomController).use(requestLogger({
+      generateRequestId: () => "error-id",
+      sink: (entry) => entries.push(entry),
+    }));
+
+    const response = await handle(app, "/boom");
+
+    expect(response.status).toBe(500);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      requestId: "error-id",
+      method: "GET",
+      path: "/boom",
+      status: 500,
+      error: {
+        name: "Error",
+        message: "route exploded",
+      },
+    });
+  });
+
+  it("should include HTTP exception status codes in request log errors", async () => {
+    const entries: RequestLogEntry[] = [];
+
+    @Controller("users")
+    class UsersController {
+      @Get()
+      findAll() {
+        throw new BadRequestException("invalid filters");
+      }
+    }
+
+    const app = appFor(UsersController).use(requestLogger({
+      sink: (entry) => entries.push(entry),
+    }));
+
+    const response = await handle(app, "/users");
+
+    expect(response.status).toBe(400);
+    expect(entries[0].error).toEqual({
+      name: "HttpException",
+      message: "invalid filters",
+      statusCode: 400,
+    });
+  });
+
+  it("should support custom request log error formatting", async () => {
+    const entries: RequestLogEntry[] = [];
+
+    @Controller("boom")
+    class BoomController {
+      @Get()
+      explode() {
+        throw new Error("sensitive failure");
+      }
+    }
+
+    const app = appFor(BoomController).use(requestLogger({
+      formatError: (error) => ({
+        name: error instanceof Error ? error.name : "unknown",
+        message: "redacted",
+      }),
+      sink: (entry) => entries.push(entry),
+    }));
+
+    const response = await handle(app, "/boom");
+
+    expect(response.status).toBe(500);
+    expect(entries[0].error).toEqual({
+      name: "Error",
+      message: "redacted",
+    });
+  });
+
+  it("should include error causes in request log errors", async () => {
+    const entries: RequestLogEntry[] = [];
+
+    @Controller("boom")
+    class BoomController {
+      @Get()
+      explode() {
+        throw new Error("outer failure", {
+          cause: new Error("inner failure"),
+        });
+      }
+    }
+
+    const app = appFor(BoomController).use(requestLogger({
+      sink: (entry) => entries.push(entry),
+    }));
+
+    const response = await handle(app, "/boom");
+
+    expect(response.status).toBe(500);
+    expect(entries[0].error).toEqual({
+      name: "Error",
+      message: "outer failure",
+      cause: "Error: inner failure",
+    });
+  });
+
+  it("should allow disabling request log error details", async () => {
+    const entries: RequestLogEntry[] = [];
+
+    @Controller("boom")
+    class BoomController {
+      @Get()
+      explode() {
+        throw new Error("hidden failure");
+      }
+    }
+
+    const app = appFor(BoomController).use(requestLogger({
+      includeError: false,
+      sink: (entry) => entries.push(entry),
+    }));
+
+    const response = await handle(app, "/boom");
+
+    expect(response.status).toBe(500);
+    expect(entries[0].error).toBeUndefined();
+  });
+
   it("should resolve path params and query params", async () => {
     @Controller("users")
     class UsersController {

@@ -337,6 +337,7 @@ requestLogger()
 requestLogger({
   json: true,
   requestIdHeader: 'X-Request-Id',
+  formatError: (error) => ({ name: 'DomainError', message: 'redacted' }),
   sink: (entry) => console.log(entry),
 })
 
@@ -356,7 +357,7 @@ bearerAuth({ staticToken: 'my-token' })     // static token (dev only)
 
 > **Logging:** `logger()` preserves the original request-start console log.
 > Use `requestLogger()` when you need production-friendly request ids, final
-> response status, and request duration in your logs.
+> response status, request duration, and handled error summaries in your logs.
 
 ### Custom Middleware
 

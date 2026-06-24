@@ -127,6 +127,39 @@ describe("fetch handler integration", () => {
     });
   });
 
+  it("should include handled errors in request logs through handler.fetch", async () => {
+    const entries: RequestLogEntry[] = [];
+
+    @Controller("boom")
+    class BoomController {
+      @Get()
+      explode() {
+        throw new Error("fetch failed");
+      }
+    }
+
+    const app = appFor(BoomController).use(requestLogger({
+      sink: (entry) => entries.push(entry),
+    }));
+
+    const response = await app.handler.fetch(request("/boom", {
+      headers: { "X-Request-Id": "fetch-error-id" },
+    }), {}, ctx);
+
+    expect(response.status).toBe(500);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      requestId: "fetch-error-id",
+      method: "GET",
+      path: "/boom",
+      status: 500,
+      error: {
+        name: "Error",
+        message: "fetch failed",
+      },
+    });
+  });
+
   it("should return middleware short-circuit responses through handler.fetch", async () => {
     const entries: RequestLogEntry[] = [];
 

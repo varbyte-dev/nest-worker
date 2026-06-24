@@ -98,6 +98,14 @@ export interface RequestLogEntry {
   path: string;
   status: number;
   durationMs: number;
+  error?: RequestLogError;
+}
+
+export interface RequestLogError {
+  name: string;
+  message?: string;
+  statusCode?: number;
+  cause?: string;
 }
 
 export interface RequestLoggerOptions {
@@ -109,6 +117,8 @@ export interface RequestLoggerOptions {
   requestIdHeader?: string;
   generateRequestId?: () => string;
   json?: boolean;
+  includeError?: boolean;
+  formatError?: (error: unknown) => RequestLogError | undefined;
   sink?: (entry: RequestLogEntry) => void;
 }
 
@@ -119,7 +129,10 @@ interface RequestLoggerState {
   method: string;
   path: string;
   json: boolean;
+  includeError: boolean;
+  formatError: (error: unknown) => RequestLogError | undefined;
   sink?: (entry: RequestLogEntry) => void;
+  error?: unknown;
 }
 
 const requestLoggerMap = new WeakMap<Request, RequestLoggerState>();
@@ -129,6 +142,8 @@ export function requestLogger(options: RequestLoggerOptions = {}): MiddlewareFn 
     requestIdHeader = "X-Request-Id",
     generateRequestId = createRequestId,
     json = false,
+    includeError = true,
+    formatError = defaultFormatError,
     sink,
   } = options;
 
@@ -146,9 +161,16 @@ export function requestLogger(options: RequestLoggerOptions = {}): MiddlewareFn 
       method: req.method,
       path: url.pathname,
       json,
+      includeError,
+      formatError,
       sink,
     });
   };
+}
+
+export function setRequestLogError(req: Request, error: unknown): void {
+  const state = requestLoggerMap.get(req);
+  if (state) state.error = error;
 }
 
 export function finalizeRequestLogging(
@@ -168,6 +190,10 @@ export function finalizeRequestLogging(
     status: response.status,
     durationMs: Math.max(0, Math.round(completedAt - state.startedAt)),
   };
+  if (state.includeError && state.error !== undefined) {
+    const error = state.formatError(state.error);
+    if (error) entry.error = error;
+  }
 
   const loggedResponse = new Response(response.body, response);
   loggedResponse.headers.set(state.requestIdHeader, state.requestId);
@@ -206,6 +232,41 @@ function createRequestId(): string {
   }
 
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function defaultFormatError(error: unknown): RequestLogError | undefined {
+  if (error instanceof Error) {
+    const formatted: RequestLogError = {
+      name: error.name || "Error",
+      message: error.message,
+    };
+    const statusCode = getStatusCode(error);
+    if (statusCode !== undefined) formatted.statusCode = statusCode;
+    const cause = formatCause(error);
+    if (cause !== undefined) formatted.cause = cause;
+    return formatted;
+  }
+
+  if (error === undefined || error === null) {
+    return { name: String(error) };
+  }
+
+  return {
+    name: "NonError",
+    message: String(error),
+  };
+}
+
+function getStatusCode(error: Error): number | undefined {
+  const maybeStatusCode = (error as { statusCode?: unknown }).statusCode;
+  return typeof maybeStatusCode === "number" ? maybeStatusCode : undefined;
+}
+
+function formatCause(error: Error): string | undefined {
+  const cause = (error as { cause?: unknown }).cause;
+  if (cause === undefined) return undefined;
+  if (cause instanceof Error) return `${cause.name}: ${cause.message}`;
+  return String(cause);
 }
 
 function now(): number {
