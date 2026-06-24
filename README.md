@@ -160,6 +160,7 @@ export class UsersController {
   getOne(@Param('id') id: string) { ... }
 
   @Post()                      // POST /users
+  @HttpCode(201)               // custom success status
   create(@Body() body: CreateUserDto) { ... }
 
   @Put(':id')                  // PUT /users/:id
@@ -184,6 +185,19 @@ export class UsersController {
 | `@D1('MY_DB')` | D1 binding with custom key |
 | `@Env()` | Complete env object |
 | `@Env('MY_SECRET')` | Specific environment variable |
+
+### Response Status Codes
+
+Use `@HttpCode()` when a handler should return a specific success status while
+still letting the framework serialize the handler result.
+
+```ts
+@Post()
+@HttpCode(201)
+create(@Body() body: CreateUserDto) {
+  return this.users.create(body);
+}
+```
 
 ### Services
 
@@ -343,6 +357,15 @@ throw new HttpException('Custom error', 422);
 // The framework catches them and responds with the correct status automatically
 ```
 
+HTTP exceptions use a stable JSON envelope:
+
+```json
+{
+  "error": "User not found",
+  "statusCode": 404
+}
+```
+
 > **Production safety:** When `APP_ENV` is set to `"production"`, unexpected internal errors return a generic message instead of leaking error details.
 
 ---
@@ -358,6 +381,7 @@ The framework automatically converts what you return:
 | `undefined` / `null` | `204 No Content` |
 | `Response` | Used as-is |
 | `throw HttpException` | Corresponding status in JSON |
+| `@HttpCode(n)` | Uses `n` for serialized success responses |
 
 ---
 
