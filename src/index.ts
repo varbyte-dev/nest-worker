@@ -62,6 +62,7 @@ export {
 // Types
 export type {
   HttpMethod,
+  InjectionToken,
   RouteDefinition,
   MiddlewareFn,
   PipeContext,
