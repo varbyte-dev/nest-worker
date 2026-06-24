@@ -8,7 +8,9 @@ import {
   HttpCode,
   Module,
   NotFoundException,
+  Param,
   Post,
+  Query,
   cors,
   createApplication,
   devRateLimit,
@@ -16,6 +18,7 @@ import {
   rateLimit,
   RequestLogEntry,
   requestLogger,
+  UseMiddleware,
   UsePipe,
 } from "../src/index";
 
@@ -459,6 +462,101 @@ describe("Router", () => {
     } finally {
       consoleError.mockRestore();
     }
+  });
+
+  it("should resolve path params and query params", async () => {
+    @Controller("users")
+    class UsersController {
+      @Get(":id")
+      find(
+        @Param("id") id: string,
+        @Query("tab") tab: string,
+        @Query() query: Record<string, string>,
+      ) {
+        return { id, tab, query };
+      }
+    }
+
+    const response = await handle(
+      appFor(UsersController),
+      "/users/42?tab=settings&active=true",
+    );
+
+    expect(response.status).toBe(200);
+    expect(await json(response)).toEqual({
+      id: "42",
+      tab: "settings",
+      query: {
+        active: "true",
+        tab: "settings",
+      },
+    });
+  });
+
+  it("should run middlewares before handlers in registration order", async () => {
+    const order: string[] = [];
+    const globalMiddleware = () => {
+      order.push("global");
+    };
+    const controllerMiddleware = () => {
+      order.push("controller");
+    };
+    const routeMiddleware = () => {
+      order.push("route");
+    };
+
+    @Controller("items")
+    @UseMiddleware(controllerMiddleware)
+    class ItemsController {
+      @Get()
+      @UseMiddleware(routeMiddleware)
+      list() {
+        order.push("handler");
+        return { order };
+      }
+    }
+
+    const response = await handle(
+      appFor(ItemsController).use(globalMiddleware),
+      "/items",
+    );
+
+    expect(response.status).toBe(200);
+    expect(await json(response)).toEqual({
+      order: ["global", "controller", "route", "handler"],
+    });
+    expect(order).toEqual(["global", "controller", "route", "handler"]);
+  });
+
+  it("should short-circuit route middleware before the handler", async () => {
+    const order: string[] = [];
+    const controllerMiddleware = () => {
+      order.push("controller");
+    };
+    const routeMiddleware = () => {
+      order.push("route");
+      return new Response(JSON.stringify({ blocked: true }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      });
+    };
+
+    @Controller("items")
+    @UseMiddleware(controllerMiddleware)
+    class ItemsController {
+      @Get()
+      @UseMiddleware(routeMiddleware)
+      list() {
+        order.push("handler");
+        return { ok: true };
+      }
+    }
+
+    const response = await handle(appFor(ItemsController), "/items");
+
+    expect(response.status).toBe(403);
+    expect(await json(response)).toEqual({ blocked: true });
+    expect(order).toEqual(["controller", "route"]);
   });
 
   it("should transform handler args with route pipes", async () => {
