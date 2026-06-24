@@ -62,6 +62,8 @@ export {
 // Types
 export type {
   HttpMethod,
+  ErrorFilterContext,
+  ErrorFilterFn,
   InjectionToken,
   RouteDefinition,
   MiddlewareFn,

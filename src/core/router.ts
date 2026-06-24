@@ -4,6 +4,8 @@ import {
   HttpMethod,
   PipeContext,
   PipeFn,
+  ErrorFilterContext,
+  ErrorFilterFn,
 } from "./types";
 import { HttpException, BadRequestException } from "./exceptions";
 import { Container } from "./container";
@@ -29,7 +31,10 @@ export class Router {
     ) => Promise<Response>;
   }> = [];
 
-  constructor(private container: Container) {}
+  constructor(
+    private container: Container,
+    private errorFilters: ErrorFilterFn[] = [],
+  ) {}
 
   registerController(ctrlClass: any) {
     const prefix: string = Reflect.getMetadata(CONTROLLER_KEY, ctrlClass) || "";
@@ -110,8 +115,7 @@ export class Router {
           const response = await route.handler(request, env, ctx, params);
           return applyCorsHeaders(request, toHeadResponse(request, response));
         } catch (err: any) {
-          const response = toErrorResponse(err, env);
-          return applyCorsHeaders(request, toHeadResponse(request, response));
+          return this.handleError(request, env, ctx, err);
         }
       }
     }
@@ -130,6 +134,20 @@ export class Router {
         ),
       ),
     );
+  }
+
+  async handleError(
+    request: Request,
+    env: Record<string, unknown>,
+    ctx: ExecutionContext,
+    error: unknown,
+  ): Promise<Response> {
+    const response = await toErrorResponse(error, {
+      request,
+      env,
+      ctx,
+    }, this.errorFilters);
+    return applyCorsHeaders(request, toHeadResponse(request, response));
   }
 }
 
@@ -244,10 +262,23 @@ function jsonResponse(data: unknown, status: number): Response {
   });
 }
 
-function toErrorResponse(err: unknown, env: Record<string, unknown>): Response {
+async function toErrorResponse(
+  err: unknown,
+  context: ErrorFilterContext,
+  filters: ErrorFilterFn[],
+): Promise<Response> {
+  for (const filter of filters) {
+    try {
+      const response = await filter(err, context);
+      if (response instanceof Response) return response;
+    } catch (filterError) {
+      console.error("Error filter failed", filterError);
+    }
+  }
+
   if (err instanceof HttpException) return err.toResponse();
 
-  const isProduction = env?.APP_ENV === "production";
+  const isProduction = context.env?.APP_ENV === "production";
   const payload: Record<string, unknown> = {
     error: "Internal Server Error",
     statusCode: 500,

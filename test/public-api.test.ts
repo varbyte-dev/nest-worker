@@ -45,6 +45,8 @@ import type {
   D1Database,
   D1PreparedStatement,
   D1Result,
+  ErrorFilterContext,
+  ErrorFilterFn,
   HttpMethod,
   InjectionToken,
   MiddlewareFn,
@@ -63,6 +65,9 @@ describe("public API contract", () => {
   it("should expose documented runtime exports from the package entrypoint", () => {
     expect(createApplication).toEqual(expect.any(Function));
     expect(NestWorkerApplication).toEqual(expect.any(Function));
+    expect(NestWorkerApplication.prototype.useErrorFilter).toEqual(
+      expect.any(Function),
+    );
     expect(Module).toEqual(expect.any(Function));
     expect(Injectable).toEqual(expect.any(Function));
     expect(Inject).toEqual(expect.any(Function));
@@ -96,6 +101,7 @@ describe("public API contract", () => {
     const method: HttpMethod = "GET";
     const token: InjectionToken = "TOKEN";
     const middleware: MiddlewareFn = () => undefined;
+    const errorFilter: ErrorFilterFn = () => undefined;
     const pipe: PipeFn = (args) => args;
     const moduleOptions: ModuleOptions = { providers: [] };
     const route: RouteDefinition = {
@@ -121,11 +127,13 @@ describe("public API contract", () => {
     const database = {} as D1Database;
     const result = {} as D1Result;
     const pipeContext = {} as PipeContext;
+    const errorFilterContext = {} as ErrorFilterContext;
 
     expect([
       method,
       token,
       middleware,
+      errorFilter,
       pipe,
       moduleOptions,
       route,
@@ -140,7 +148,8 @@ describe("public API contract", () => {
       database,
       result,
       pipeContext,
-    ]).toHaveLength(17);
+      errorFilterContext,
+    ]).toHaveLength(19);
   });
 });
 
