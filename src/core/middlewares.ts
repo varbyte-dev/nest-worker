@@ -22,7 +22,7 @@ export function getCorsHeaders(
 }
 
 export interface CorsOptions {
-  origin?: string | string[];
+  origin?: string | string[] | ((origin: string) => boolean);
   methods?: string[];
   allowedHeaders?: string[];
   credentials?: boolean;
@@ -38,23 +38,44 @@ export function cors(options: CorsOptions = {}): MiddlewareFn {
     maxAge = 86400,
   } = options;
 
-  return (_req, _env, _ctx) => {
-    const originHeader = Array.isArray(origin) ? origin.join(", ") : origin;
-    const headers: Record<string, string> = {
-      "Access-Control-Allow-Origin": originHeader,
-      "Access-Control-Allow-Methods": methods.join(", "),
-      "Access-Control-Allow-Headers": allowedHeaders.join(", "),
-      "Access-Control-Max-Age": String(maxAge),
-    };
-    if (credentials) headers["Access-Control-Allow-Credentials"] = "true";
+  if (credentials && origin === "*") {
+    throw new Error("CORS credentials cannot be used with wildcard origin");
+  }
 
-    if (_req.method === "OPTIONS") {
+  return (req, _env, _ctx) => {
+    const requestOrigin = req.headers.get("Origin");
+    const allowedOrigin = resolveAllowedOrigin(origin, requestOrigin);
+    const headers: Record<string, string> = { Vary: "Origin" };
+
+    if (allowedOrigin) {
+      headers["Access-Control-Allow-Origin"] = allowedOrigin;
+      headers["Access-Control-Allow-Methods"] = methods.join(", ");
+      headers["Access-Control-Allow-Headers"] = allowedHeaders.join(", ");
+      headers["Access-Control-Max-Age"] = String(maxAge);
+      if (credentials) headers["Access-Control-Allow-Credentials"] = "true";
+    }
+
+    if (req.method === "OPTIONS") {
       return new Response(null, { status: 204, headers });
     }
 
-    // Store CORS headers in WeakMap for the router to apply to the response
-    setCorsHeaders(_req, headers);
+    setCorsHeaders(req, headers);
   };
+}
+
+function resolveAllowedOrigin(
+  policy: NonNullable<CorsOptions["origin"]>,
+  requestOrigin: string | null,
+): string | undefined {
+  if (policy === "*") return "*";
+  if (!requestOrigin) return undefined;
+  if (typeof policy === "string") {
+    return policy === requestOrigin ? requestOrigin : undefined;
+  }
+  if (Array.isArray(policy)) {
+    return policy.includes(requestOrigin) ? requestOrigin : undefined;
+  }
+  return policy(requestOrigin) ? requestOrigin : undefined;
 }
 
 // ─── Logger Middleware ────────────────────────────────────────────
