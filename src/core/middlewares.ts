@@ -123,16 +123,21 @@ export function bearerAuth(options: BearerAuthOptions = {}): MiddlewareFn {
   };
 }
 
-// ─── Rate Limiter (in-memory, per-IP) ────────────────────────────
-// ⚠️ WARNING: In-memory store does NOT persist across Worker invocations.
-// This only works reliably in local dev. For production, use Durable Objects or KV.
+// ─── Development Rate Limiter (in-memory, per-IP) ────────────────
 
 export interface RateLimitOptions {
   windowMs?: number;
   max?: number;
 }
 
-export function rateLimit(options: RateLimitOptions = {}): MiddlewareFn {
+/**
+ * In-memory rate limiter for local development and tests.
+ *
+ * This is not production-safe on Cloudflare Workers because isolate memory is
+ * not durable or globally consistent. Use Durable Objects, KV, or Cloudflare
+ * platform controls for production rate limiting.
+ */
+export function devRateLimit(options: RateLimitOptions = {}): MiddlewareFn {
   const { windowMs = 60_000, max = 60 } = options;
   const store = new Map<string, { count: number; reset: number }>();
 
@@ -162,3 +167,8 @@ export function rateLimit(options: RateLimitOptions = {}): MiddlewareFn {
     }
   };
 }
+
+/**
+ * @deprecated Use devRateLimit() to make the in-memory limitation explicit.
+ */
+export const rateLimit = devRateLimit;

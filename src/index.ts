@@ -31,7 +31,13 @@ export { D1Repository } from './database/repository';
 export { QueryBuilder } from './database/query-builder';
 
 // Middlewares
-export { cors, logger, bearerAuth, rateLimit } from './core/middlewares';
+export {
+  cors,
+  logger,
+  bearerAuth,
+  devRateLimit,
+  rateLimit,
+} from './core/middlewares';
 export type { CorsOptions, BearerAuthOptions, RateLimitOptions } from './core/middlewares';
 
 // Exceptions

@@ -527,7 +527,7 @@ export class ConfigController {
 ```ts
 // worker.ts
 import 'reflect-metadata';
-import { Module, createApplication, cors, logger, rateLimit } from '@varbyte/nest-worker';
+import { Module, createApplication, cors, logger, devRateLimit } from '@varbyte/nest-worker';
 import { AppController } from './app.controller';
 
 @Module({ controllers: [AppController] })
@@ -542,13 +542,17 @@ app
     methods: ['GET', 'POST'],
     credentials: true,
   }))
-  .use(rateLimit({
+  .use(devRateLimit({
     windowMs: 60_000,  // 1 minute
     max: 100,          // 100 requests per minute
   }));
 
 export default app.handler;
 ```
+
+> `devRateLimit()` is in-memory and intended for local development/tests. It is
+> not production-safe on Cloudflare Workers; use Durable Objects, KV with
+> consistency tradeoffs, or Cloudflare platform controls for production.
 
 ### Per-Route Auth with Bearer Token
 
@@ -575,10 +579,10 @@ export class AdminController {
 ### Mixed Middlewares
 
 ```ts
-import { bearerAuth, cors, rateLimit, UseMiddleware } from '@varbyte/nest-worker';
+import { bearerAuth, cors, devRateLimit, UseMiddleware } from '@varbyte/nest-worker';
 
 @Controller('api')
-@UseMiddleware(cors({ origin: '*' }), rateLimit({ max: 30 }))
+@UseMiddleware(cors({ origin: '*' }), devRateLimit({ max: 30 }))
 export class ApiController {
   @Get('public')
   publicData() {
@@ -1032,7 +1036,7 @@ export class HealthController {
 ```ts
 // worker.ts
 import 'reflect-metadata';
-import { Module, createApplication, cors, logger, rateLimit } from '@varbyte/nest-worker';
+import { Module, createApplication, cors, logger, devRateLimit } from '@varbyte/nest-worker';
 import { UserController } from './user.controller';
 import { UserService } from './user.service';
 import { HealthController } from './health.controller';
@@ -1048,7 +1052,7 @@ const app = createApplication(AppModule);
 app
   .use(logger())
   .use(cors({ origin: '*' }))
-  .use(rateLimit({ windowMs: 60_000, max: 60 }));
+  .use(devRateLimit({ windowMs: 60_000, max: 60 }));
 
 export default app.handler;
 ```
