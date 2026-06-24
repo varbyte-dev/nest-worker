@@ -9,7 +9,7 @@ import {
 } from "./types";
 import { HttpException, BadRequestException } from "./exceptions";
 import { Container } from "./container";
-import { getCorsHeaders, setRequestLogError } from "./middlewares";
+import { getCorsHeaders, setRequestLogError } from "./request-context";
 
 const CONTROLLER_KEY = "__controller__";
 const ROUTES_KEY = "__routes__";
