@@ -8,6 +8,7 @@ import {
   Module,
   NotFoundException,
   Post,
+  cors,
   createApplication,
 } from "../src/index";
 
@@ -35,6 +36,18 @@ function appFor(controller: any) {
   class TestModule {}
 
   return createApplication(TestModule);
+}
+
+function corsApp(options: Parameters<typeof cors>[0]) {
+  @Controller("health")
+  class HealthController {
+    @Get()
+    check() {
+      return { ok: true };
+    }
+  }
+
+  return appFor(HealthController).use(cors(options));
 }
 
 describe("Router", () => {
@@ -193,5 +206,92 @@ describe("Router", () => {
 
     expect(response.status).toBe(200);
     expect(await response.text()).toBe("");
+  });
+
+  it("should reflect allowed CORS origins from an allowlist", async () => {
+    const response = await handle(corsApp({
+      origin: ["https://app.example", "https://admin.example"],
+    }), "/health", {
+      headers: { Origin: "https://app.example" },
+    });
+
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+      "https://app.example",
+    );
+    expect(response.headers.get("Vary")).toBe("Origin");
+  });
+
+  it("should not apply CORS headers for denied origins", async () => {
+    const response = await handle(corsApp({
+      origin: ["https://app.example"],
+      credentials: true,
+    }), "/health", {
+      headers: { Origin: "https://evil.example" },
+    });
+
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    expect(response.headers.get("Access-Control-Allow-Credentials")).toBeNull();
+    expect(response.headers.get("Vary")).toBe("Origin");
+  });
+
+  it("should support dynamic CORS origin predicates", async () => {
+    const response = await handle(corsApp({
+      origin: (origin) => origin.endsWith(".trusted.example"),
+    }), "/health", {
+      headers: { Origin: "https://api.trusted.example" },
+    });
+
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+      "https://api.trusted.example",
+    );
+  });
+
+  it("should include credentials only with explicit allowed origins", async () => {
+    const response = await handle(corsApp({
+      origin: "https://app.example",
+      credentials: true,
+    }), "/health", {
+      headers: { Origin: "https://app.example" },
+    });
+
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+      "https://app.example",
+    );
+    expect(response.headers.get("Access-Control-Allow-Credentials")).toBe(
+      "true",
+    );
+  });
+
+  it("should reject wildcard CORS origins with credentials", () => {
+    expect(() => cors({ origin: "*", credentials: true })).toThrow(
+      "CORS credentials cannot be used with wildcard origin",
+    );
+  });
+
+  it("should respond to CORS preflight requests for allowed origins", async () => {
+    const response = await handle(corsApp({
+      origin: ["https://app.example"],
+      methods: ["GET", "POST"],
+      allowedHeaders: ["Content-Type", "Authorization"],
+      maxAge: 600,
+    }), "/health", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://app.example",
+        "Access-Control-Request-Method": "POST",
+      },
+    });
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+      "https://app.example",
+    );
+    expect(response.headers.get("Access-Control-Allow-Methods")).toBe(
+      "GET, POST",
+    );
+    expect(response.headers.get("Access-Control-Allow-Headers")).toBe(
+      "Content-Type, Authorization",
+    );
+    expect(response.headers.get("Access-Control-Max-Age")).toBe("600");
   });
 });

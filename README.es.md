@@ -308,6 +308,11 @@ export class AdminController {
 ```ts
 // CORS
 cors({ origin: '*', methods: ['GET', 'POST'], credentials: false })
+cors({ origin: ['https://app.example', 'https://admin.example'] })
+cors({ origin: (origin) => origin.endsWith('.trusted.example') })
+
+// Las credenciales requieren un origen explícito, nunca '*'
+cors({ origin: 'https://app.example', credentials: true })
 
 // Logger (consola)
 logger()
