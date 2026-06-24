@@ -8,6 +8,7 @@ const ROUTES_KEY = '__routes__';
 const PARAMS_KEY = '__params__';
 const MIDDLEWARES_KEY = '__middlewares__';
 const DEPS_KEY = '__deps__';
+const HTTP_CODE_KEY = '__http_code__';
 
 // ─── Module ──────────────────────────────────────────────────────
 
@@ -80,6 +81,20 @@ export const Put = createRouteDecorator('PUT');
 export const Patch = createRouteDecorator('PATCH');
 export const Delete = createRouteDecorator('DELETE');
 export const Options = createRouteDecorator('OPTIONS');
+
+export function HttpCode(statusCode: number): MethodDecorator {
+  if (!Number.isInteger(statusCode) || statusCode < 100 || statusCode > 599) {
+    throw new Error(`Invalid HTTP status code: ${statusCode}`);
+  }
+
+  return (target, propertyKey) => {
+    Reflect.defineMetadata(
+      `${HTTP_CODE_KEY}:${String(propertyKey)}`,
+      statusCode,
+      target.constructor,
+    );
+  };
+}
 
 // ─── Parameter decorators ─────────────────────────────────────────
 

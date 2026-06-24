@@ -7,6 +7,7 @@ const CONTROLLER_KEY = "__controller__";
 const ROUTES_KEY = "__routes__";
 const PARAMS_KEY = "__params__";
 const MIDDLEWARES_KEY = "__middlewares__";
+const HTTP_CODE_KEY = "__http_code__";
 
 export class Router {
   private routes: Array<{
@@ -40,6 +41,9 @@ export class Router {
           `${MIDDLEWARES_KEY}:${route.handlerName}`,
           ctrlClass,
         ) || [];
+      const statusCode =
+        Reflect.getMetadata(`${HTTP_CODE_KEY}:${route.handlerName}`, ctrlClass) ||
+        200;
 
       this.routes.push({
         method: route.method,
@@ -65,7 +69,7 @@ export class Router {
             paramsMeta,
           );
           const result = await instance[route.handlerName](...args);
-          return toResponse(result);
+          return toResponse(result, statusCode);
         },
       });
     }
@@ -80,34 +84,33 @@ export class Router {
     const method = request.method.toUpperCase() as HttpMethod;
 
     for (const route of this.routes) {
-      if (route.method !== method) continue;
+      if (!methodMatches(route.method, method)) continue;
       const match = route.pattern.exec({ pathname: url.pathname });
       if (match) {
         const params = match.pathname.groups as Record<string, string>;
         try {
           const response = await route.handler(request, env, ctx, params);
-          return applyCorsHeaders(request, response);
+          return applyCorsHeaders(request, toHeadResponse(request, response));
         } catch (err: any) {
-          const response =
-            err instanceof HttpException
-              ? err.toResponse()
-              : jsonResponse(
-                  {
-                    error:
-                      env?.APP_ENV === "production"
-                        ? "Internal Server Error"
-                        : err.message,
-                  },
-                  500,
-                );
-          return applyCorsHeaders(request, response);
+          const response = toErrorResponse(err, env);
+          return applyCorsHeaders(request, toHeadResponse(request, response));
         }
       }
     }
 
     return applyCorsHeaders(
       request,
-      jsonResponse({ error: "Not Found", path: url.pathname }, 404),
+      toHeadResponse(
+        request,
+        jsonResponse(
+          {
+            error: "Not Found",
+            statusCode: 404,
+            path: url.pathname,
+          },
+          404,
+        ),
+      ),
     );
   }
 }
@@ -116,6 +119,13 @@ export class Router {
 
 function normalizePath(path: string): string {
   return path.replace(/\/+/g, "/").replace(/\/$/, "") || "/";
+}
+
+function methodMatches(routeMethod: HttpMethod, requestMethod: HttpMethod) {
+  return (
+    routeMethod === requestMethod ||
+    (routeMethod === "GET" && requestMethod === "HEAD")
+  );
 }
 
 async function resolveHandlerArgs(
@@ -182,13 +192,16 @@ async function resolveHandlerArgs(
   return args;
 }
 
-function toResponse(value: unknown): Response {
+function toResponse(value: unknown, status = 200): Response {
   if (value instanceof Response) return value;
   if (value === undefined || value === null)
     return new Response(null, { status: 204 });
   if (typeof value === "string")
-    return new Response(value, { headers: { "Content-Type": "text/plain" } });
-  return jsonResponse(value, 200);
+    return new Response(value, {
+      status,
+      headers: { "Content-Type": "text/plain" },
+    });
+  return jsonResponse(value, status);
 }
 
 function jsonResponse(data: unknown, status: number): Response {
@@ -196,6 +209,40 @@ function jsonResponse(data: unknown, status: number): Response {
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+function toErrorResponse(err: unknown, env: Record<string, unknown>): Response {
+  if (err instanceof HttpException) return err.toResponse();
+
+  const isProduction = env?.APP_ENV === "production";
+  const payload: Record<string, unknown> = {
+    error: "Internal Server Error",
+    statusCode: 500,
+  };
+
+  if (!isProduction) {
+    payload.details = {
+      message: errorMessage(err),
+    };
+  }
+
+  return jsonResponse(payload, 500);
+}
+
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
+}
+
+function toHeadResponse(request: Request, response: Response): Response {
+  if (request.method.toUpperCase() !== "HEAD") return response;
+  return new Response(null, response);
 }
 
 function applyCorsHeaders(request: Request, response: Response): Response {

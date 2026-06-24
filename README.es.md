@@ -160,6 +160,7 @@ export class UsersController {
   getOne(@Param('id') id: string) { ... }
 
   @Post()                      // POST /users
+  @HttpCode(201)               // status de éxito custom
   create(@Body() body: CreateUserDto) { ... }
 
   @Put(':id')                  // PUT /users/:id
@@ -184,6 +185,19 @@ export class UsersController {
 | `@D1('MY_DB')` | Binding D1 con clave personalizada |
 | `@Env()` | Objeto env completo |
 | `@Env('MY_SECRET')` | Variable de entorno específica |
+
+### Status de respuesta
+
+Usa `@HttpCode()` cuando un handler debe devolver un status de éxito específico
+y aún quieres que el framework serialice el resultado.
+
+```ts
+@Post()
+@HttpCode(201)
+create(@Body() body: CreateUserDto) {
+  return this.users.create(body);
+}
+```
 
 ### Servicios
 
@@ -343,6 +357,15 @@ throw new HttpException('Error custom', 422);
 // El framework las captura y responde automáticamente con el status correcto
 ```
 
+Las excepciones HTTP usan un envelope JSON estable:
+
+```json
+{
+  "error": "Usuario no encontrado",
+  "statusCode": 404
+}
+```
+
 > **Seguridad en producción:** Cuando `APP_ENV` está configurado como `"production"`, los errores internos inesperados devuelven un mensaje genérico en lugar de filtrar detalles del error.
 
 ---
@@ -358,6 +381,7 @@ El framework convierte automáticamente lo que retornas:
 | `undefined` / `null` | `204 No Content` |
 | `Response` | Se usa tal cual |
 | `throw HttpException` | Status correspondiente en JSON |
+| `@HttpCode(n)` | Usa `n` para respuestas exitosas serializadas |
 
 ---
 

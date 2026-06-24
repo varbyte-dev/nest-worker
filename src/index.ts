@@ -14,6 +14,7 @@ export {
   Patch,
   Delete,
   Options,
+  HttpCode,
   Body,
   Param,
   Query,
