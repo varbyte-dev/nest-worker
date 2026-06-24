@@ -1,4 +1,10 @@
-import { RouteDefinition, ParamMetadata, HttpMethod } from "./types";
+import {
+  RouteDefinition,
+  ParamMetadata,
+  HttpMethod,
+  PipeContext,
+  PipeFn,
+} from "./types";
 import { HttpException, BadRequestException } from "./exceptions";
 import { Container } from "./container";
 import { getCorsHeaders } from "./middlewares";
@@ -8,6 +14,7 @@ const ROUTES_KEY = "__routes__";
 const PARAMS_KEY = "__params__";
 const MIDDLEWARES_KEY = "__middlewares__";
 const HTTP_CODE_KEY = "__http_code__";
+const PIPES_KEY = "__pipes__";
 
 export class Router {
   private routes: Array<{
@@ -30,6 +37,7 @@ export class Router {
       Reflect.getMetadata(ROUTES_KEY, ctrlClass) || [];
     const ctrlMiddlewares =
       Reflect.getMetadata(MIDDLEWARES_KEY, ctrlClass) || [];
+    const ctrlPipes: PipeFn[] = Reflect.getMetadata(PIPES_KEY, ctrlClass) || [];
 
     const instance = this.container.resolveController(ctrlClass);
 
@@ -44,6 +52,9 @@ export class Router {
       const statusCode =
         Reflect.getMetadata(`${HTTP_CODE_KEY}:${route.handlerName}`, ctrlClass) ||
         200;
+      const routePipes: PipeFn[] =
+        Reflect.getMetadata(`${PIPES_KEY}:${route.handlerName}`, ctrlClass) ||
+        [];
 
       this.routes.push({
         method: route.method,
@@ -68,7 +79,14 @@ export class Router {
             pathParams,
             paramsMeta,
           );
-          const result = await instance[route.handlerName](...args);
+          const pipedArgs = await applyPipes([...ctrlPipes, ...routePipes], args, {
+            request: req,
+            env,
+            ctx,
+            params: pathParams,
+            route,
+          });
+          const result = await instance[route.handlerName](...pipedArgs);
           return toResponse(result, statusCode);
         },
       });
@@ -190,6 +208,21 @@ async function resolveHandlerArgs(
   }
 
   return args;
+}
+
+async function applyPipes(
+  pipes: PipeFn[],
+  args: unknown[],
+  context: PipeContext,
+): Promise<unknown[]> {
+  let currentArgs = args;
+
+  for (const pipe of pipes) {
+    const nextArgs = await pipe(currentArgs, context);
+    if (nextArgs !== undefined) currentArgs = nextArgs;
+  }
+
+  return currentArgs;
 }
 
 function toResponse(value: unknown, status = 200): Response {

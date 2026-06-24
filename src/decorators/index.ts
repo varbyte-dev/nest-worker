@@ -1,4 +1,4 @@
-import { HttpMethod, MiddlewareFn, ParamMetadata } from '../core/types';
+import { HttpMethod, MiddlewareFn, ParamMetadata, PipeFn } from '../core/types';
 
 // ─── Metadata keys ───────────────────────────────────────────────
 const MODULE_KEY = '__module__';
@@ -9,6 +9,7 @@ const PARAMS_KEY = '__params__';
 const MIDDLEWARES_KEY = '__middlewares__';
 const DEPS_KEY = '__deps__';
 const HTTP_CODE_KEY = '__http_code__';
+const PIPES_KEY = '__pipes__';
 
 // ─── Module ──────────────────────────────────────────────────────
 
@@ -131,6 +132,20 @@ export function UseMiddleware(...middlewares: MiddlewareFn[]) {
     } else {
       // Class-level
       Reflect.defineMetadata(MIDDLEWARES_KEY, middlewares, target);
+    }
+  };
+}
+
+export function UsePipe(...pipes: PipeFn[]) {
+  return (target: any, propertyKey?: string | symbol) => {
+    if (propertyKey) {
+      Reflect.defineMetadata(
+        `${PIPES_KEY}:${String(propertyKey)}`,
+        pipes,
+        target.constructor,
+      );
+    } else {
+      Reflect.defineMetadata(PIPES_KEY, pipes, target);
     }
   };
 }

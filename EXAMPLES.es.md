@@ -596,7 +596,9 @@ export const apiKeyAuth = (validKeys: string[]): MiddlewareFn => {
 // 2. cors (global)
 // 3. Middlewares del controlador (@UseMiddleware en la clase)
 // 4. Middlewares de la ruta (@UseMiddleware en el método)
-// 5. Handler de la ruta
+// 5. Pipes del controlador (@UsePipe en la clase)
+// 6. Pipes de la ruta (@UsePipe en el método)
+// 7. Handler de la ruta
 
 app
   .use(logger())       // 1º
@@ -607,14 +609,34 @@ app
 export class ItemsController {
   @Get()
   @UseMiddleware(mw2)  // 4º — solo para esta ruta
+  @UsePipe(pipe1)      // 6º — valida/transforma argumentos resueltos
   list() {
-    // 5º
+    // 7º
     return { items: [] };
   }
 }
 ```
 
 Si algún middleware retorna un `Response`, la cadena se detiene inmediatamente.
+
+### Pipes de validación
+
+```ts
+import { BadRequestException, Body, PipeFn, Post, UsePipe } from '@varbyte/nest-worker';
+
+const requireEmail: PipeFn = (args) => {
+  const body = args[0] as { email?: unknown };
+  if (typeof body.email !== 'string') {
+    throw new BadRequestException('email is required', { field: 'email' });
+  }
+};
+
+@Post()
+@UsePipe(requireEmail)
+create(@Body() body: { email: string }) {
+  return body;
+}
+```
 
 ---
 

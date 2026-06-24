@@ -2,6 +2,7 @@ import "reflect-metadata";
 import { describe, expect, it } from "vitest";
 import {
   Body,
+  BadRequestException,
   Controller,
   Get,
   HttpCode,
@@ -11,7 +12,9 @@ import {
   cors,
   createApplication,
   devRateLimit,
+  PipeFn,
   rateLimit,
+  UsePipe,
 } from "../src/index";
 
 const ctx = {} as ExecutionContext;
@@ -337,5 +340,110 @@ describe("Router", () => {
 
   it("should keep rateLimit as a compatibility alias", () => {
     expect(rateLimit).toBe(devRateLimit);
+  });
+
+  it("should transform handler args with route pipes", async () => {
+    const normalizeUser: PipeFn = (args) => {
+      const body = args[0] as { name: string };
+      return [{ ...body, name: body.name.trim() }];
+    };
+
+    @Controller("users")
+    class UsersController {
+      @Post()
+      @UsePipe(normalizeUser)
+      create(@Body() body: { name: string }) {
+        return body;
+      }
+    }
+
+    const response = await handle(appFor(UsersController), "/users", {
+      method: "POST",
+      body: JSON.stringify({ name: " Ada " }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await json(response)).toEqual({ name: "Ada" });
+  });
+
+  it("should return stable errors when pipes reject input", async () => {
+    const requireName: PipeFn = (args) => {
+      const body = args[0] as { name?: unknown };
+      if (typeof body.name !== "string") {
+        throw new BadRequestException("name is required", { field: "name" });
+      }
+    };
+
+    @Controller("users")
+    class UsersController {
+      @Post()
+      @UsePipe(requireName)
+      create(@Body() body: { name: string }) {
+        return body;
+      }
+    }
+
+    const response = await handle(appFor(UsersController), "/users", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await json(response)).toEqual({
+      error: "name is required",
+      statusCode: 400,
+      details: { field: "name" },
+    });
+  });
+
+  it("should run controller pipes before route pipes", async () => {
+    const addControllerMarker: PipeFn = (args) => {
+      const body = args[0] as { order: string[] };
+      return [{ order: [...body.order, "controller"] }];
+    };
+    const addRouteMarker: PipeFn = (args) => {
+      const body = args[0] as { order: string[] };
+      return [{ order: [...body.order, "route"] }];
+    };
+
+    @Controller("users")
+    @UsePipe(addControllerMarker)
+    class UsersController {
+      @Post()
+      @UsePipe(addRouteMarker)
+      create(@Body() body: { order: string[] }) {
+        return body;
+      }
+    }
+
+    const response = await handle(appFor(UsersController), "/users", {
+      method: "POST",
+      body: JSON.stringify({ order: [] }),
+    });
+
+    expect(await json(response)).toEqual({ order: ["controller", "route"] });
+  });
+
+  it("should pass request context to pipes", async () => {
+    const includePathParam: PipeFn = (args, context) => {
+      const body = args[0] as Record<string, unknown>;
+      return [{ ...body, userId: context.params.id }];
+    };
+
+    @Controller("users")
+    class UsersController {
+      @Post(":id")
+      @UsePipe(includePathParam)
+      update(@Body() body: Record<string, unknown>) {
+        return body;
+      }
+    }
+
+    const response = await handle(appFor(UsersController), "/users/42", {
+      method: "POST",
+      body: JSON.stringify({ name: "Ada" }),
+    });
+
+    expect(await json(response)).toEqual({ name: "Ada", userId: "42" });
   });
 });
