@@ -418,6 +418,21 @@ HTTP exceptions use a stable JSON envelope:
 }
 ```
 
+Register global error filters when an application needs custom error-to-response
+mapping. Filters can return a `Response`; returning nothing keeps the framework's
+stable fallback behavior.
+
+```ts
+app.useErrorFilter((error, { request }) => {
+  if (error instanceof DomainError) {
+    return Response.json({
+      error: error.message,
+      path: new URL(request.url).pathname,
+    }, { status: 422 });
+  }
+});
+```
+
 > **Production safety:** When `APP_ENV` is set to `"production"`, unexpected internal errors return a generic message instead of leaking error details.
 
 ---

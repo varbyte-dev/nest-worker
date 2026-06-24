@@ -419,6 +419,21 @@ Las excepciones HTTP usan un envelope JSON estable:
 }
 ```
 
+Registra filtros globales de error cuando una aplicación necesita mapear errores
+a respuestas custom. Los filtros pueden retornar un `Response`; si no retornan
+nada, el framework conserva su fallback estable.
+
+```ts
+app.useErrorFilter((error, { request }) => {
+  if (error instanceof DomainError) {
+    return Response.json({
+      error: error.message,
+      path: new URL(request.url).pathname,
+    }, { status: 422 });
+  }
+});
+```
+
 > **Seguridad en producción:** Cuando `APP_ENV` está configurado como `"production"`, los errores internos inesperados devuelven un mensaje genérico en lugar de filtrar detalles del error.
 
 ---

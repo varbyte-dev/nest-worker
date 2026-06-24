@@ -14,6 +14,7 @@ import {
   cors,
   createApplication,
   devRateLimit,
+  ErrorFilterFn,
   PipeFn,
   rateLimit,
   RequestLogEntry,
@@ -189,6 +190,94 @@ describe("Router", () => {
       error: "Not Found",
       statusCode: 404,
       path: "/missing",
+    });
+  });
+
+  it("should use global error filters for route errors", async () => {
+    const filter: ErrorFilterFn = (error, context) => {
+      const url = new URL(context.request.url);
+      return new Response(JSON.stringify({
+        message: error instanceof Error ? error.message : "unknown",
+        path: url.pathname,
+      }), {
+        status: 418,
+        headers: { "Content-Type": "application/json" },
+      });
+    };
+
+    @Controller("boom")
+    class BoomController {
+      @Get()
+      explode() {
+        throw new Error("custom failure");
+      }
+    }
+
+    const response = await handle(
+      appFor(BoomController).useErrorFilter(filter),
+      "/boom",
+    );
+
+    expect(response.status).toBe(418);
+    expect(await json(response)).toEqual({
+      message: "custom failure",
+      path: "/boom",
+    });
+  });
+
+  it("should keep stable fallback errors when filters do not respond", async () => {
+    const filter: ErrorFilterFn = () => undefined;
+
+    @Controller("users")
+    class UsersController {
+      @Get()
+      findAll() {
+        throw new BadRequestException("invalid request");
+      }
+    }
+
+    const response = await handle(
+      appFor(UsersController).useErrorFilter(filter),
+      "/users",
+    );
+
+    expect(response.status).toBe(400);
+    expect(await json(response)).toEqual({
+      error: "invalid request",
+      statusCode: 400,
+    });
+  });
+
+  it("should use global error filters for global middleware errors", async () => {
+    const filter: ErrorFilterFn = (error) => {
+      return new Response(JSON.stringify({
+        handled: error instanceof Error ? error.message : "unknown",
+      }), {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      });
+    };
+
+    @Controller("health")
+    class HealthController {
+      @Get()
+      check() {
+        return { ok: true };
+      }
+    }
+
+    const response = await handle(
+      appFor(HealthController)
+        .use(() => {
+          throw new Error("middleware failed");
+        })
+        .useErrorFilter(filter),
+      "/health",
+    );
+
+    expect(response.status).toBe(503);
+    expect(await json(response)).toEqual({
+      handled: "middleware failed",
     });
   });
 

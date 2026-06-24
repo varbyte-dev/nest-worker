@@ -33,6 +33,17 @@ export type PipeFn = (
   context: PipeContext,
 ) => Promise<unknown[] | void> | unknown[] | void;
 
+export interface ErrorFilterContext {
+  request: Request;
+  env: Record<string, unknown>;
+  ctx: ExecutionContext;
+}
+
+export type ErrorFilterFn = (
+  error: unknown,
+  context: ErrorFilterContext,
+) => Promise<Response | void> | Response | void;
+
 export type InjectionToken = string | symbol | (new (...args: any[]) => any);
 
 export interface ParamMetadata {

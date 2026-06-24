@@ -1,4 +1,4 @@
-import { MiddlewareFn } from "./types";
+import { ErrorFilterFn, MiddlewareFn } from "./types";
 import { Router } from "./router";
 import { Container } from "./container";
 import { finalizeRequestLogging } from "./middlewares";
@@ -11,10 +11,11 @@ export class NestWorkerApplication {
   private router: Router;
   private container: Container;
   private globalMiddlewares: MiddlewareFn[] = [];
+  private globalErrorFilters: ErrorFilterFn[] = [];
 
   constructor(private rootModule: any) {
     this.container = new Container();
-    this.router = new Router(this.container);
+    this.router = new Router(this.container, this.globalErrorFilters);
     this.bootstrap();
   }
 
@@ -31,21 +32,31 @@ export class NestWorkerApplication {
     return this;
   }
 
+  useErrorFilter(...filters: ErrorFilterFn[]): this {
+    this.globalErrorFilters.push(...filters);
+    return this;
+  }
+
   async handle(
     request: Request,
     env: WorkerEnv,
     ctx: ExecutionContext,
   ): Promise<Response> {
-    // Run global middlewares (with ctx)
-    for (const mw of this.globalMiddlewares) {
-      const result = await mw(request, env, ctx);
-      if (result instanceof Response) {
-        return finalizeRequestLogging(request, result);
+    try {
+      // Run global middlewares (with ctx)
+      for (const mw of this.globalMiddlewares) {
+        const result = await mw(request, env, ctx);
+        if (result instanceof Response) {
+          return finalizeRequestLogging(request, result);
+        }
       }
-    }
 
-    const response = await this.router.resolve(request, env, ctx);
-    return finalizeRequestLogging(request, response);
+      const response = await this.router.resolve(request, env, ctx);
+      return finalizeRequestLogging(request, response);
+    } catch (err) {
+      const response = await this.router.handleError(request, env, ctx, err);
+      return finalizeRequestLogging(request, response);
+    }
   }
 
   /** Returns the fetch handler to export from the Worker */
