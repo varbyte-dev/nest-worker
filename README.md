@@ -20,6 +20,15 @@
 
 ---
 
+## Maintainer Policy
+
+Public API and release decisions follow
+[docs/API_RELEASE_POLICY.md](docs/API_RELEASE_POLICY.md). Review this policy
+before changing exports, decorators, generated code, CLI commands, documented
+behavior, or release notes.
+
+---
+
 ## CLI — `@varbyte/nest-worker-cli`
 
 Accelerate your development with the official CLI:

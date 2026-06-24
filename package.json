@@ -33,6 +33,7 @@
     "README.es.md",
     "EXAMPLES.md",
     "EXAMPLES.es.md",
+    "docs",
     "LICENSE"
   ],
   "scripts": {
