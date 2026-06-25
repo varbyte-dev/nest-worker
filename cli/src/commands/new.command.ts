@@ -273,7 +273,7 @@ export class AppException extends HttpException {
 }
 
 function appConfigTs(): string {
-  return `import { InjectionToken } from '@varbyte/nest-worker';
+  return `import type { InjectionToken } from '@varbyte/nest-worker';
 
 export interface AppConfig {
   appName: string;

@@ -1023,10 +1023,11 @@ function createProviderCommand(): Command {
 function buildProviderTemplate(info: NameInfo, type: string): string {
   const token = `${info.pascal.toUpperCase()}_TOKEN`;
   const providerName = `${info.pascal}Provider`;
+  const providerClassName = `${info.pascal}ProviderClass`;
   const factoryFn = `${info.camel}Factory`;
 
   if (type === "value") {
-    return `import { InjectionToken } from '@varbyte/nest-worker';
+    return `import type { InjectionToken } from '@varbyte/nest-worker';
 
 /** Injection token for ${info.human.toLowerCase()} provider */
 export const ${token} = '${info.camel}-provider' as unknown as InjectionToken;
@@ -1038,6 +1039,26 @@ export const ${providerName} = {
     // TODO: provide the actual value
     name: '${info.human}',
   },
+};
+`;
+  }
+
+  if (type === "class") {
+    return `import { Injectable } from '@varbyte/nest-worker';
+import type { InjectionToken } from '@varbyte/nest-worker';
+
+/** Injection token for ${info.human.toLowerCase()} provider */
+export const ${token} = '${info.camel}-provider' as unknown as InjectionToken;
+
+@Injectable()
+export class ${providerClassName} {
+  // TODO: implement provider behavior
+}
+
+/** ${info.human} provider (useClass) */
+export const ${providerName} = {
+  provide: ${token},
+  useClass: ${providerClassName},
 };
 `;
   }
