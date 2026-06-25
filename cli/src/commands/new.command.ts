@@ -53,7 +53,7 @@ export function newCommand(): Command {
         ["src/modules/app/app.controller.ts", appControllerTs()],
         ["src/modules/app/app.service.ts", appServiceTs()],
         ["src/modules/health/health.controller.ts", healthControllerTs()],
-        ["src/common/middlewares/logger.middleware.ts", loggerMiddlewareTs()],
+        ["src/common/filters/app-error.filter.ts", appErrorFilterTs()],
         ["src/common/exceptions/app.exception.ts", appExceptionTs()],
         ["src/config/app.config.ts", appConfigTs()],
         ["src/database/migrations/.gitkeep", ""],
@@ -174,12 +174,14 @@ dist
 
 function workerTs(): string {
   return `import 'reflect-metadata';
-import { createApplication, cors, logger } from '@varbyte/nest-worker';
+import { createApplication, cors, requestLogger } from '@varbyte/nest-worker';
+import { appErrorFilter } from './common/filters/app-error.filter';
 import { AppModule } from './modules/app/app.module';
 
 const app = createApplication(AppModule);
-app.use(logger());
+app.use(requestLogger({ json: true }));
 app.use(cors());
+app.useErrorFilter(appErrorFilter);
 
 export default app.handler;
 `;
@@ -242,14 +244,18 @@ export class HealthController {
 `;
 }
 
-function loggerMiddlewareTs(): string {
-  return `import type { MiddlewareFn } from '@varbyte/nest-worker';
+function appErrorFilterTs(): string {
+  return `import type { ErrorFilterFn } from '@varbyte/nest-worker';
+import { HttpException } from '@varbyte/nest-worker';
 
-export function requestLogger(): MiddlewareFn {
-  return async (req, _env, _ctx) => {
-    const url = new URL(req.url);
-    console.log(\`[\${new Date().toISOString()}] \${req.method} \${url.pathname}\`);
-  };
+export const appErrorFilter: ErrorFilterFn = (error, { request }) => {
+  if (!(error instanceof HttpException)) return;
+
+  return Response.json({
+    ...error.toJSON(),
+    path: new URL(request.url).pathname,
+    timestamp: new Date().toISOString(),
+  }, { status: error.statusCode });
 }
 `;
 }

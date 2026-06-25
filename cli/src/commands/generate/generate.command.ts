@@ -284,13 +284,13 @@ export class ${info.pascal}Service {
   }
 
   async create(db: D1Database, data: Record<string, unknown>): Promise<{ id: number; message: string }> {
-    const result = await this.getRepo(db).create(data);
+    const result = await this.getRepo(db).create(data as Omit<${entityName}, 'id'>);
     return { id: result.meta.last_row_id!, message: '${entityName} created' };
   }
 
   async update(db: D1Database, id: number, data: Record<string, unknown>): Promise<${entityName}> {
     await this.findById(db, id);
-    await this.getRepo(db).update(id, data);
+    await this.getRepo(db).update(id, data as Partial<Omit<${entityName}, 'id'>>);
     return this.findById(db, id);
   }
 
@@ -441,11 +441,21 @@ function buildResourceControllerTemplate(info: NameInfo): string {
   Param,
   Query,
   D1,
+  UsePipe,
+  validateBody,
 } from '@varbyte/nest-worker';
 import type { D1Database } from '@varbyte/nest-worker';
 import { ${serviceName} } from './${info.kebab}.service.js';
 import { Create${info.pascal}Dto } from './dto/create-${info.kebab}.dto.js';
 import { Update${info.pascal}Dto } from './dto/update-${info.kebab}.dto.js';
+
+const validateCreate${info.pascal} = validateBody<Create${info.pascal}Dto>((body) => {
+  if (!body || typeof body !== 'object') return 'Request body is required';
+});
+
+const validateUpdate${info.pascal} = validateBody<Update${info.pascal}Dto>((body) => {
+  if (!body || typeof body !== 'object') return 'Request body is required';
+});
 
 @Controller('${pluralPath}', [${serviceName}])
 export class ${info.pascal}Controller {
@@ -463,6 +473,7 @@ export class ${info.pascal}Controller {
   }
 
   @Post()
+  @UsePipe(validateCreate${info.pascal})
   async create(
     @D1() db: D1Database,
     @Body() body: Create${info.pascal}Dto,
@@ -471,6 +482,7 @@ export class ${info.pascal}Controller {
   }
 
   @Put(':id')
+  @UsePipe(validateUpdate${info.pascal})
   async update(
     @D1() db: D1Database,
     @Param('id') id: string,
@@ -519,13 +531,13 @@ export class ${info.pascal}Service {
   }
 
   async create(db: D1Database, data: Record<string, unknown>): Promise<{ id: number; message: string }> {
-    const result = await this.getRepo(db).create(data);
+    const result = await this.getRepo(db).create(data as Omit<${entityName}, 'id'>);
     return { id: result.meta.last_row_id!, message: '${entityName} created' };
   }
 
   async update(db: D1Database, id: number, data: Record<string, unknown>): Promise<${entityName}> {
     await this.findById(db, id);
-    await this.getRepo(db).update(id, data);
+    await this.getRepo(db).update(id, data as Partial<Omit<${entityName}, 'id'>>);
     return this.findById(db, id);
   }
 
@@ -765,38 +777,24 @@ function createFilterCommand(): Command {
 function buildFilterTemplate(info: NameInfo): string {
   const filterName = `${info.camel}Filter`;
 
-  return `import type { MiddlewareFn, HttpException } from '@varbyte/nest-worker';
+  return `import type { ErrorFilterFn } from '@varbyte/nest-worker';
+import { HttpException } from '@varbyte/nest-worker';
 
 /**
- * ${info.human} error filter — catches errors and returns a structured JSON response.
+ * ${info.human} error filter — map handled errors to structured responses.
+ *
+ * Register it with:
+ *   app.useErrorFilter(${filterName});
  */
-export function ${filterName}(): MiddlewareFn {
-  return async (req, env, ctx) => {
-    try {
-      // We wrap the downstream handler by returning void and letting
-      // the caller continue. For a proper filter you would integrate
-      // this at the application level or as a global middleware.
-      return;
-    } catch (err) {
-      const ex = err as HttpException;
-      const status = ex.statusCode || 500;
-      const message = ex.message || 'Internal Server Error';
+export const ${filterName}: ErrorFilterFn = (error, { request }) => {
+  if (!(error instanceof HttpException)) return;
 
-      return new Response(
-        JSON.stringify({
-          error: message,
-          statusCode: status,
-          timestamp: new Date().toISOString(),
-          path: new URL(req.url).pathname,
-        }),
-        {
-          status,
-          headers: { 'Content-Type': 'application/json' },
-        },
-      );
-    }
-  };
-}
+  return Response.json({
+    ...error.toJSON(),
+    path: new URL(request.url).pathname,
+    timestamp: new Date().toISOString(),
+  }, { status: error.statusCode });
+};
 `;
 }
 
@@ -897,6 +895,7 @@ function buildModelTemplate(info: NameInfo): string {
  * Represents a single row in the \`${tableName}\` table.
  */
 export interface ${entityName} {
+  [key: string]: unknown;
   id: number;
   // TODO: add your fields here
   created_at: string;
