@@ -1,6 +1,6 @@
 {
   "name": "@varbyte/nest-worker-cli",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "CLI tool for @varbyte/nest-worker — scaffolding and code generation for NestJS-inspired Cloudflare Workers",
   "keywords": [
     "cloudflare",
