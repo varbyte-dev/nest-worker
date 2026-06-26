@@ -140,7 +140,7 @@ function checkWrangler(root: string): Diagnostic[] {
   }
 
   const results: Diagnostic[] = [];
-  const content = readFileSync(wranglerPath, 'utf-8');
+  const content = stripTomlComments(readFileSync(wranglerPath, 'utf-8'));
 
   // Check for D1 bindings
   const hasD1Binding = /\[\[d1_databases\]\]/.test(content);
@@ -200,6 +200,13 @@ function checkWrangler(root: string): Diagnostic[] {
   }
 
   return results;
+}
+
+function stripTomlComments(content: string): string {
+  return content
+    .split('\n')
+    .filter((line) => !line.trimStart().startsWith('#'))
+    .join('\n');
 }
 
 function checkWorkerEntry(root: string): Diagnostic {

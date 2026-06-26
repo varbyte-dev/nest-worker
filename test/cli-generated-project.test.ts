@@ -40,6 +40,7 @@ describe("CLI generated project", () => {
     const projectRoot = resolve(tempRoot, "sample-api");
 
     expect(existsSync(resolve(projectRoot, "package.json"))).toBe(true);
+    expect(existsSync(resolve(projectRoot, "pnpm-workspace.yaml"))).toBe(true);
     expect(existsSync(resolve(projectRoot, "tsconfig.json"))).toBe(true);
     expect(existsSync(resolve(projectRoot, "wrangler.toml"))).toBe(true);
     expect(existsSync(resolve(projectRoot, "src/worker.ts"))).toBe(true);
@@ -48,6 +49,18 @@ describe("CLI generated project", () => {
     ).toBe(true);
 
     await pointGeneratedProjectAtLocalWorkspace(projectRoot);
+
+    const pkg = JSON.parse(
+      await readFile(resolve(projectRoot, "package.json"), "utf-8"),
+    );
+    expect(pkg.pnpm.onlyBuiltDependencies).toEqual([
+      "esbuild",
+      "sharp",
+      "workerd",
+    ]);
+    await expect(
+      readFile(resolve(projectRoot, "pnpm-workspace.yaml"), "utf-8"),
+    ).resolves.toContain("allowBuilds:");
 
     typecheckGeneratedProject(projectRoot);
   });
@@ -179,7 +192,10 @@ describe("CLI generated project", () => {
 
     await runCliCommand(projectRoot, listCommand());
     await runCliCommand(projectRoot, infoCommand());
-    await runCliCommand(projectRoot, doctorCommand());
+    const doctorOutput = await runCliCommand(projectRoot, doctorCommand());
+
+    expect(doctorOutput).toContain("No D1 bindings required");
+    expect(doctorOutput).not.toContain("D1 binding name");
 
     typecheckGeneratedProject(projectRoot);
   });
@@ -207,7 +223,9 @@ async function runNewCommand(cwd: string, name: string) {
   command.exitOverride();
 
   const previousCwd = process.cwd();
-  const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const consoleLog = vi
+    .spyOn(console, "log")
+    .mockImplementation(() => undefined);
 
   try {
     process.chdir(cwd);
@@ -226,18 +244,26 @@ async function runCliCommand(
   cwd: string,
   command: ReturnType<typeof generateCommand>,
   args: string[] = [],
-) {
+): Promise<string> {
   command.exitOverride();
 
   const previousCwd = process.cwd();
-  const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const output: string[] = [];
+  const consoleLog = vi
+    .spyOn(console, "log")
+    .mockImplementation((...args) => {
+      output.push(args.map(String).join(" "));
+    });
   const consoleError = vi
     .spyOn(console, "error")
-    .mockImplementation(() => undefined);
+    .mockImplementation((...args) => {
+      output.push(args.map(String).join(" "));
+    });
 
   try {
     process.chdir(cwd);
     await command.parseAsync(["node", "test", ...args]);
+    return output.join("\n");
   } finally {
     process.chdir(previousCwd);
     consoleLog.mockRestore();

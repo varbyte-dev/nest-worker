@@ -45,6 +45,7 @@ export function newCommand(): Command {
       // Create files using the template contents
       const files: Array<[string, string]> = [
         ["package.json", packageJson(n)],
+        ["pnpm-workspace.yaml", pnpmWorkspaceYaml()],
         ["tsconfig.json", tsconfigJson()],
         ["wrangler.toml", wranglerToml(n)],
         [".gitignore", gitignore()],
@@ -114,10 +115,21 @@ function packageJson(n: ReturnType<typeof parseName>): string {
         wrangler: "^3.40.0",
         "@cloudflare/workers-types": "^4.20241205.0",
       },
+      pnpm: {
+        onlyBuiltDependencies: ["esbuild", "sharp", "workerd"],
+      },
     },
     null,
     2,
   );
+}
+
+function pnpmWorkspaceYaml(): string {
+  return `allowBuilds:
+  esbuild: true
+  sharp: true
+  workerd: true
+`;
 }
 
 function tsconfigJson(): string {
