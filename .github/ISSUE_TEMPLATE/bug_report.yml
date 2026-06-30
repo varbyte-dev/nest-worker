@@ -1,0 +1,69 @@
+name: 🐛 Bug Report
+description: Create a report to help us improve nest-worker
+labels: [type:bug, status:needs-review]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report!
+  - type: input
+    id: version
+    attributes:
+      label: Package Version
+      description: What version of `@varbyte/nest-worker` are you running?
+      placeholder: "e.g., 0.2.0"
+    validations:
+      required: true
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js Version
+      placeholder: "e.g., 20.11.0"
+    validations:
+      required: true
+  - type: input
+    id: wrangler-version
+    attributes:
+      label: Wrangler Version
+      placeholder: "e.g., 3.40.0"
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of the bug
+      placeholder: What happened? What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior
+      placeholder: |
+        1. Create a controller with...
+        2. Run `pnpm dev`
+        3. Make a request to `GET /...`
+        4. See error
+    validations:
+      required: true
+  - type: textarea
+    id: code
+    attributes:
+      label: Relevant Code
+      description: Minimal code to reproduce the issue
+      render: typescript
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Log Output
+      description: Copy and paste any relevant error messages or logs
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Validation
+      options:
+        - label: I have searched the existing issues and this is not a duplicate
+          required: true
+        - label: I have tested with the latest version
+          required: true

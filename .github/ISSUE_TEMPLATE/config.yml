@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📖 Documentation
+    url: https://varbyte-dev.github.io/nest-worker-docs/
+    about: Check the full documentation
+  - name: 💬 Discussion
+    url: https://github.com/varbyte-dev/nest-worker/discussions
+    about: Ask questions and discuss ideas
