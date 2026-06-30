@@ -66,17 +66,37 @@ pnpm dev
 
 ```
 nest-worker/
-├── src/                   # Package source code
-│   ├── decorators/        # Decorators (@Controller, @Get, etc.)
-│   ├── core/              # Core framework (DI, modules, lifecycle)
-│   ├── middlewares/       # Built-in middlewares
-│   ├── d1/               # D1 integration (repository, query builder)
-│   ├── swagger/          # Swagger/OpenAPI generation
-│   └── cli/              # CLI generator utilities
-├── cli/                   # CLI package source
-├── test/                  # Test files
-├── example/               # Example project
-└── docs/                  # Documentation assets
+├── src/                       # Package source code
+│   ├── index.ts               # Public API exports
+│   ├── core/                  # Core framework (DI, modules, lifecycle)
+│   │   ├── application.ts     # NestWorkerFactory, app creation
+│   │   ├── container.ts       # Dependency injection container
+│   │   ├── router.ts          # Request routing
+│   │   ├── middlewares.ts     # Middleware pipeline
+│   │   ├── exceptions.ts      # HTTP exceptions (NotFoundException, etc.)
+│   │   ├── request-context.ts # Request-scoped context
+│   │   └── types.ts           # Type definitions
+│   ├── decorators/            # Decorators (@Controller, @Get, @Post, @Module, etc.)
+│   │   └── index.ts
+│   ├── database/              # D1 integration
+│   │   ├── repository.ts      # D1Repository
+│   │   └── query-builder.ts   # QueryBuilder
+│   └── extras/                # Optional modules
+│       ├── middlewares.ts      # Built-in middlewares (CORS, logger, rate-limit, auth)
+│       ├── swagger.ts          # Swagger/OpenAPI auto-generation
+│       └── validation.ts       # Request validation
+├── cli/                       # CLI package (@varbyte/nest-worker-cli)
+│   ├── src/
+│   │   ├── index.ts            # CLI entry point
+│   │   ├── commands/           # CLI commands (generate, new, etc.)
+│   │   ├── templates/          # Scaffolding templates
+│   │   └── utils/              # Shared utilities
+│   └── package.json
+├── test/                       # Test files
+├── example/                    # Example project
+├── docs/                       # Documentation assets
+├── migrations/                 # D1 database migrations
+└── .github/                    # GitHub CI, PR/issue templates
 ```
 
 ### 🧪 Running Tests
