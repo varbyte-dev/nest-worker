@@ -17,6 +17,7 @@
 - **D1 integrado** — `@D1()` inyecta el binding, `D1Repository` y `QueryBuilder` listos para usar
 - **Middlewares** — CORS, logger, rate limiting, bearer auth incluidos
 - **Excepciones HTTP** — `NotFoundException`, `BadRequestException`, etc.
+- **Swagger / OpenAPI** — documentación de API auto-generada con decoradores `@ApiModel()` y `@Prop()`, servida vía Swagger UI con Basic Auth opcional
 - **Cero dependencias en runtime** — solo `reflect-metadata`
 - **Protección contra SQL Injection** — todos los identificadores se sanitizan automáticamente
 
@@ -56,14 +57,38 @@ npx @varbyte/nest-worker-cli
 | `nest-worker generate filter <nombre>` | Generar un filtro de errores |
 | `nest-worker generate repository <nombre>` | Generar un repositorio D1 |
 | `nest-worker generate model <nombre>` | Generar una interfaz de modelo |
-| `nest-worker generate dto <nombre>` | Generar DTOs de creación y actualización |
+| `nest-worker generate dto <nombre>` | Generar DTOs con decoradores `@ApiModel()` |
 | `nest-worker generate provider <nombre>` | Generar un provider personalizado |
 | `nest-worker generate migration <desc>` | Generar una migración SQL |
 | `nest-worker generate seed <nombre>` | Generar un seed SQL |
 | `nest-worker generate env <var>` | Agregar variable de entorno a `wrangler.toml` |
+| `nest-worker generate swagger` | Generar configuración Swagger/OpenAPI con detección automática |
 | `nest-worker info` | Mostrar información del proyecto y framework |
 | `nest-worker list` | Listar recursos generados |
 | `nest-worker doctor` | Diagnosticar problemas de configuración |
+
+### Swagger / OpenAPI con Detección Automática
+
+La CLI puede escanear tus controladores y DTOs existentes para generar documentación Swagger automáticamente:
+
+```bash
+# Generar configuración Swagger y detectar decoradores automáticamente
+nest-worker generate swagger --detect --update-worker
+
+# Iniciar servidor de desarrollo
+npm run dev
+
+# Abrir http://localhost:8787/docs en el navegador
+```
+
+La bandera `--detect`:
+1. Escanea todos los controladores en `src/modules/`
+2. Agrega `@ApiTags()` a los controladores (si falta)
+3. Agrega `@ApiOperation()` con resúmenes auto-generados para cada ruta
+4. Escanea archivos DTO y agrega decoradores `@ApiModel()` y `@Prop()`
+5. Infiere tipos de propiedades desde anotaciones TypeScript
+
+La bandera `--update-worker` actualiza automáticamente `src/worker.ts` para habilitar Swagger.
 
 ### Ejemplo rápido
 

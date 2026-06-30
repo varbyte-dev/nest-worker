@@ -17,6 +17,7 @@
 - **D1 Integration** — `@D1()` injects the binding, `D1Repository` and `QueryBuilder` ready to use
 - **Middlewares** — CORS, logger, rate limiting, bearer auth included
 - **HTTP Exceptions** — `NotFoundException`, `BadRequestException`, etc.
+- **Swagger / OpenAPI** — auto-generated API documentation with `@ApiModel()` and `@Prop()` decorators, served via Swagger UI with optional Basic Auth
 - **Zero runtime dependencies** — only `reflect-metadata`
 - **SQL Injection Protection** — all identifiers are sanitized automatically
 
@@ -56,14 +57,38 @@ npx @varbyte/nest-worker-cli
 | `nest-worker generate filter <name>` | Generate an error-handling filter |
 | `nest-worker generate repository <name>` | Generate a D1 repository |
 | `nest-worker generate model <name>` | Generate a model interface |
-| `nest-worker generate dto <name>` | Generate create & update DTOs |
+| `nest-worker generate dto <name>` | Generate create & update DTOs with `@ApiModel()` decorators |
 | `nest-worker generate provider <name>` | Generate a custom provider |
 | `nest-worker generate migration <desc>` | Generate a SQL migration |
 | `nest-worker generate seed <name>` | Generate a SQL seed |
 | `nest-worker generate env <var>` | Add environment variable to `wrangler.toml` |
+| `nest-worker generate swagger` | Generate Swagger/OpenAPI config with auto-detection |
 | `nest-worker info` | Display project & framework info |
 | `nest-worker list` | List generated resources |
 | `nest-worker doctor` | Diagnose configuration issues |
+
+### Swagger / OpenAPI Auto-Detection
+
+The CLI can scan your existing controllers and DTOs to auto-generate Swagger documentation:
+
+```bash
+# Generate Swagger config and auto-detect decorators
+nest-worker generate swagger --detect --update-worker
+
+# Start your dev server
+npm run dev
+
+# Open http://localhost:8787/docs in your browser
+```
+
+The `--detect` flag:
+1. Scans all controllers in `src/modules/`
+2. Adds `@ApiTags()` to controllers (if missing)
+3. Adds `@ApiOperation()` with auto-generated summaries for each route
+4. Scans DTO files and adds `@ApiModel()` and `@Prop()` decorators
+5. Infers property types from TypeScript type annotations
+
+The `--update-worker` flag automatically updates `src/worker.ts` to enable Swagger.
 
 ### Quick Example
 
@@ -75,6 +100,9 @@ npm install
 
 # Generate a complete CRUD resource
 nest-worker generate resource users
+
+# Enable Swagger documentation
+nest-worker generate swagger --detect --update-worker
 
 # Start development
 npm run dev

@@ -43,6 +43,7 @@ Referencia completa de comandos:
 | `nest-worker generate exception <nombre>` | Subclase personalizada de `HttpException` |
 | `nest-worker generate filter <nombre>` | Filtro middleware para capturar errores |
 | `nest-worker generate migration <desc>` | Archivo de migración SQL con timestamp |
+| `nest-worker generate swagger` | Archivo de configuración de Swagger/OpenAPI |
 
 ---
 
@@ -61,7 +62,8 @@ Referencia completa de comandos:
 6. [Middlewares](#6-middlewares)
 7. [Excepciones HTTP y manejo de errores](#7-excepciones-http-y-manejo-de-errores)
 8. [Tipos de providers (useClass / useValue / useFactory)](#8-tipos-de-providers)
-9. [Ejemplo de aplicación completa](#9-ejemplo-de-aplicación-completa)
+9. [Documentación Swagger / OpenAPI](#9-documentación-swagger--openapi)
+10. [Ejemplo de aplicación completa](#10-ejemplo-de-aplicación-completa)
 
 ---
 
@@ -811,7 +813,138 @@ class AppModule {}
 
 ---
 
-## 9. Ejemplo de aplicación completa
+## 9. Documentación Swagger / OpenAPI
+
+Genera documentación interactiva de la API automáticamente con Swagger UI.
+
+### Configuración
+
+Usa `app.useSwagger()` para habilitar la documentación con protección opcional Basic Auth:
+
+```typescript
+import { createApplication, Module, cors, logger } from '@varbyte/nest-worker';
+
+@Module({ controllers: [UsersController], providers: [UsersService] })
+class AppModule {}
+
+const app = createApplication(AppModule);
+
+app
+  .use(logger())
+  .use(cors({ origin: "*" }))
+  .useSwagger({
+    title: 'Mi API',
+    version: '1.0.0',
+    description: 'Documentación de la API',
+    path: '/docs',                              // default: /docs
+    auth: {                                      // Basic Auth opcional
+      username: 'admin',
+      password: process.env.SWAGGER_PASSWORD || 'secreto',
+    },
+    servers: [
+      { url: 'https://api.example.com', description: 'Producción' },
+    ],
+  });
+
+export default app.handler;
+```
+
+Abre `/docs` en tu navegador para ver la interfaz de Swagger. La spec JSON de OpenAPI está disponible en `/docs/json`.
+
+### Decorando DTOs con `@ApiModel()` y `@Prop()`
+
+Documenta tus modelos de datos con un decorador por clase y uno por propiedad:
+
+```typescript
+import { ApiModel, Prop } from '@varbyte/nest-worker';
+
+@ApiModel({ description: 'Modelo de datos de usuario' })
+class User {
+  @Prop() id!: number;
+  @Prop({ description: 'Nombre completo' }) name!: string;
+  @Prop({ description: 'Correo electrónico', example: 'user@example.com' }) email!: string;
+  @Prop({ description: 'Rol del usuario', example: 'user' }) role!: string;
+  @Prop() created_at!: string;
+}
+
+@ApiModel({ description: 'Payload para crear un usuario' })
+class CreateUserDto {
+  @Prop() name!: string;
+  @Prop() email!: string;
+  @Prop({ description: 'Por defecto: "user"' }) role?: string;
+}
+```
+
+### Describiendo Endpoints (Opcional)
+
+Usa decoradores opcionales para enriquecer la documentación generada:
+
+```typescript
+import {
+  Controller, Get, Post, Body, Param,
+  ApiTags, ApiOperation, ApiResponse,
+} from '@varbyte/nest-worker';
+
+@ApiTags('Usuarios')
+@Controller('users')
+export class UsersController {
+  @Get(':id')
+  @ApiOperation({ summary: 'Obtener usuario por ID', description: 'Retorna un usuario' })
+  @ApiResponse({ status: 200, description: 'Usuario encontrado' })
+  @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
+  async getOne(@Param('id') id: string) {
+    // ...
+  }
+
+  @Post()
+  @ApiOperation({ summary: 'Crear un nuevo usuario' })
+  @ApiResponse({ status: 201, description: 'Usuario creado' })
+  async create(@Body() body: CreateUserDto) {
+    // ...
+  }
+}
+```
+
+El schema del body y los modelos de respuesta se detectan automáticamente desde `@Body()` y `design:returntype`. Cuando usas `@ApiModel()` + `@Prop()` en tus DTOs, el schema completo aparece en Swagger UI con tipos, descripciones y ejemplos.
+
+### Generador CLI
+
+```bash
+# Generar un archivo de configuración de swagger
+nest-worker generate swagger
+
+# Detectar automáticamente controladores y DTOs, agregar decoradores
+nest-worker generate swagger --detect
+
+# Todo en uno: generar config + detectar + habilitar en worker.ts
+nest-worker generate swagger --detect --update-worker
+```
+
+#### Opciones
+
+| Bandera | Descripción |
+|---------|-------------|
+| `--detect` | Escanea todos los controladores y DTOs, agrega automáticamente `@ApiTags()`, `@ApiOperation()`, `@ApiModel()`, `@Prop()` donde falten |
+| `--update-worker` | Habilita Swagger automáticamente en `src/worker.ts` |
+| `--title <nombre>` | Título de la API (default: "My API") |
+| `--version <ver>` | Versión de la API (default: "1.0.0") |
+| `--path <ruta>` | Ruta de Swagger UI (default: "/docs") |
+| `--no-auth` | Deshabilitar autenticación Basic Auth |
+| `-f, --force` | Sobrescribir archivo de configuración existente |
+
+Al ejecutar `--detect`, la CLI:
+1. Escanea `src/modules/**/*.controller.ts` en busca de controladores
+2. Agrega `@ApiTags('NombreClase')` si falta
+3. Agrega `@ApiOperation({ summary: '...' })` para cada ruta
+4. Escanea `src/modules/**/*.dto.ts` en busca de DTOs
+5. Agrega decoradores `@ApiModel()` y `@Prop()` a los DTOs
+6. Infiere tipos de propiedades desde las anotaciones de TypeScript
+
+Los recursos recién generados (`nest-worker generate resource`) ya incluyen `@ApiTags()`, `@ApiOperation()`, `@ApiModel()` y `@Prop()` por defecto.
+
+---
+
+## 10. Ejemplo de aplicación completa
 
 ### API de gestión de usuarios
 

@@ -17,6 +17,17 @@ import {
   migrationTimestamp,
 } from "../../utils/file-system.js";
 import { detectProject, findProjectRoot } from "../../utils/project.js";
+import {
+  scanControllers,
+  scanDTOs,
+  addSwaggerImport,
+  addApiModelToDTO,
+  addPropToDTOProperties,
+  addApiTagsToController,
+  addApiOperationToHandler,
+  DetectedController,
+  DetectedDTO,
+} from "../../utils/swagger-detector.js";
 
 // ─── Helpers ───────────────────────────────────────────────────────────
 
@@ -170,26 +181,32 @@ function buildControllerTemplate(info: NameInfo): string {
   Param,
   Query,
   D1,
+  ApiTags,
+  ApiOperation,
 } from '@varbyte/nest-worker';
 import type { D1Database } from '@varbyte/nest-worker';
 import { ${serviceName} } from '${serviceFile}.js';
 
+@ApiTags('${info.pascal}')
 @Controller('${pluralPath}', [${serviceName}])
 export class ${info.pascal}Controller {
   constructor(private readonly ${serviceVar}: ${serviceName}) {}
 
   @Get()
+  @ApiOperation({ summary: 'List all ${pluralPath}' })
   async findAll(@D1() db: D1Database, @Query('page') page?: string) {
     const p = page ? parseInt(page, 10) : 1;
     return this.${serviceVar}.findAll(db, p);
   }
 
   @Get(':id')
+  @ApiOperation({ summary: 'Get ${info.human} by ID' })
   async findOne(@D1() db: D1Database, @Param('id') id: string) {
     return this.${serviceVar}.findById(db, parseInt(id, 10));
   }
 
   @Post()
+  @ApiOperation({ summary: 'Create a new ${info.human.toLowerCase()}' })
   async create(
     @D1() db: D1Database,
     @Body() body: Record<string, unknown>,
@@ -198,6 +215,7 @@ export class ${info.pascal}Controller {
   }
 
   @Put(':id')
+  @ApiOperation({ summary: 'Update ${info.human} by ID' })
   async update(
     @D1() db: D1Database,
     @Param('id') id: string,
@@ -207,6 +225,7 @@ export class ${info.pascal}Controller {
   }
 
   @Delete(':id')
+  @ApiOperation({ summary: 'Delete ${info.human} by ID' })
   async remove(@D1() db: D1Database, @Param('id') id: string) {
     return this.${serviceVar}.delete(db, parseInt(id, 10));
   }
@@ -443,6 +462,8 @@ function buildResourceControllerTemplate(info: NameInfo): string {
   D1,
   UsePipe,
   validateBody,
+  ApiTags,
+  ApiOperation,
 } from '@varbyte/nest-worker';
 import type { D1Database } from '@varbyte/nest-worker';
 import { ${serviceName} } from './${info.kebab}.service.js';
@@ -457,23 +478,27 @@ const validateUpdate${info.pascal} = validateBody<Update${info.pascal}Dto>((body
   if (!body || typeof body !== 'object') return 'Request body is required';
 });
 
+@ApiTags('${info.pascal}')
 @Controller('${pluralPath}', [${serviceName}])
 export class ${info.pascal}Controller {
   constructor(private readonly ${serviceVar}: ${serviceName}) {}
 
   @Get()
+  @ApiOperation({ summary: 'List all ${pluralPath}', description: 'Paginated list of ${info.human.toLowerCase()} resources' })
   async findAll(@D1() db: D1Database, @Query('page') page?: string) {
     const p = page ? parseInt(page, 10) : 1;
     return this.${serviceVar}.findAll(db, p);
   }
 
   @Get(':id')
+  @ApiOperation({ summary: 'Get ${info.human} by ID', description: 'Retrieve a single ${info.human.toLowerCase()} by its ID' })
   async findOne(@D1() db: D1Database, @Param('id') id: string) {
     return this.${serviceVar}.findById(db, parseInt(id, 10));
   }
 
   @Post()
   @UsePipe(validateCreate${info.pascal})
+  @ApiOperation({ summary: 'Create a new ${info.human.toLowerCase()}' })
   async create(
     @D1() db: D1Database,
     @Body() body: Create${info.pascal}Dto,
@@ -483,6 +508,7 @@ export class ${info.pascal}Controller {
 
   @Put(':id')
   @UsePipe(validateUpdate${info.pascal})
+  @ApiOperation({ summary: 'Update ${info.human} by ID' })
   async update(
     @D1() db: D1Database,
     @Param('id') id: string,
@@ -492,6 +518,7 @@ export class ${info.pascal}Controller {
   }
 
   @Delete(':id')
+  @ApiOperation({ summary: 'Delete ${info.human} by ID' })
   async remove(@D1() db: D1Database, @Param('id') id: string) {
     return this.${serviceVar}.delete(db, parseInt(id, 10));
   }
@@ -953,10 +980,16 @@ function createDtoCommand(): Command {
 function buildCreateDtoTemplate(info: NameInfo): string {
   const className = `Create${info.pascal}Dto`;
 
-  return `/**
- * DTO for creating a new ${info.human.toLowerCase()} resource.
- */
-export interface ${className} {
+  return `import { ApiModel, Prop } from '@varbyte/nest-worker';
+
+@ApiModel({ description: 'Payload to create a new ${info.human.toLowerCase()}' })
+export class ${className} {
+  @Prop({ description: 'Name of the ${info.human.toLowerCase()}', example: 'Sample' })
+  name!: string;
+
+  @Prop({ description: 'Description of the ${info.human.toLowerCase()}', example: 'A sample item' })
+  description?: string;
+
   // TODO: add fields required for creation
 }
 `;
@@ -965,11 +998,16 @@ export interface ${className} {
 function buildUpdateDtoTemplate(info: NameInfo): string {
   const className = `Update${info.pascal}Dto`;
 
-  return `/**
- * DTO for updating an existing ${info.human.toLowerCase()} resource.
- * All fields are optional — only provided fields will be updated.
- */
-export interface ${className} {
+  return `import { ApiModel, Prop } from '@varbyte/nest-worker';
+
+@ApiModel({ description: 'Payload to update an existing ${info.human.toLowerCase()}' })
+export class Update${info.pascal}Dto {
+  @Prop({ description: 'Name of the ${info.human.toLowerCase()}', example: 'Updated Name' })
+  name?: string;
+
+  @Prop({ description: 'Description of the ${info.human.toLowerCase()}', example: 'Updated description' })
+  description?: string;
+
   // TODO: add optional fields for updates
 }
 `;
@@ -1195,8 +1233,322 @@ function createSeedCommand(): Command {
 }
 
 // ========================================================================
-//  ENV
+//  SWAGGER  (enhanced with auto-detection)
 // ========================================================================
+
+function createSwaggerCommand(): Command {
+  const cmd = new Command("swagger");
+  cmd.description(
+    "Generate Swagger/OpenAPI configuration — auto-detects controllers and DTOs",
+  );
+  cmd.option("-f, --force", "Overwrite existing files");
+  cmd.option(
+    "--detect",
+    "Scan existing controllers and DTOs to auto-add Swagger decorators",
+  );
+  cmd.option(
+    "--update-worker",
+    "Automatically update worker.ts to enable Swagger",
+  );
+  cmd.option("--title <title>", "API title for Swagger docs", "My API");
+  cmd.option("--version <version>", "API version for Swagger docs", "1.0.0");
+  cmd.option("--path <path>", "Swagger UI path", "/docs");
+  cmd.option("--no-auth", "Disable Basic Auth for Swagger UI");
+  cmd.action(
+    async (opts: {
+      force?: boolean;
+      detect?: boolean;
+      updateWorker?: boolean;
+      title?: string;
+      version?: string;
+      path?: string;
+      auth?: boolean;
+    }) => {
+      const root = projectGuard();
+      const dir = ensureCommonDir(root, "config");
+      const relDir = `src/common/config`;
+      const swaggerFile = "swagger.ts";
+      const swaggerPath = resolve(dir, swaggerFile);
+      const relPath = `${relDir}/${swaggerFile}`;
+
+      await ensureDir(dir);
+
+      // ── Detect phase (optional) ──────────────────────────────────
+      let detectedControllers: DetectedController[] = [];
+      let detectedDTOs: DetectedDTO[] = [];
+
+      if (opts.detect) {
+        console.log(
+          pc.bold(`\n🔍 Scanning project for Swagger documentation...\n`),
+        );
+
+        detectedControllers = scanControllers(root);
+        detectedDTOs = scanDTOs(root);
+
+        if (detectedControllers.length === 0) {
+          console.log(
+            `  ${pc.yellow("⚠")} No controllers found in ${pc.dim("src/modules/")}`,
+          );
+        } else {
+          console.log(
+            `  ${pc.green("✓")} Found ${detectedControllers.length} controller(s)`,
+          );
+
+          for (const ctrl of detectedControllers) {
+            console.log(
+              `    ${pc.dim("└─")} ${pc.cyan(ctrl.relativePath)} (${ctrl.routes.length} routes)`,
+            );
+
+            // Add @ApiTags() if missing
+            if (!ctrl.hasTagsDecorator) {
+              try {
+                const ctrlCode = readFileSync(ctrl.filePath, "utf-8");
+                const { code: updated, modified } = addApiTagsToController(
+                  ctrlCode,
+                  ctrl.tags,
+                );
+                if (modified) {
+                  writeFileSync(ctrl.filePath, updated, "utf-8");
+                  console.log(
+                    `      ${pc.green("✓")} Added @ApiTags() decorator`,
+                  );
+                }
+              } catch {
+                console.log(`      ${pc.red("✗")} Failed to update controller`);
+              }
+            } else {
+              console.log(`      ${pc.dim("—")} @ApiTags() already present`);
+            }
+
+            // Add @ApiOperation() for each route if missing
+            for (const route of ctrl.routes) {
+              if (route.hasApiOperation) continue;
+              try {
+                const ctrlCode = readFileSync(ctrl.filePath, "utf-8");
+                const { code: updated, modified } = addApiOperationToHandler(
+                  ctrlCode,
+                  route.handlerName,
+                  route,
+                );
+                if (modified) {
+                  writeFileSync(ctrl.filePath, updated, "utf-8");
+                  console.log(
+                    `      ${pc.green("✓")} Added @ApiOperation() to ${pc.dim(route.handlerName)}`,
+                  );
+                }
+              } catch {
+                console.log(
+                  `      ${pc.red("✗")} Failed to add @ApiOperation() to ${route.handlerName}`,
+                );
+              }
+            }
+          }
+        }
+
+        if (detectedDTOs.length === 0) {
+          console.log(
+            `  ${pc.yellow("⚠")} No DTOs found in ${pc.dim("src/modules/")}`,
+          );
+        } else {
+          console.log(`  ${pc.green("✓")} Found ${detectedDTOs.length} DTO(s)`);
+
+          for (const dto of detectedDTOs) {
+            console.log(
+              `    ${pc.dim("└─")} ${pc.cyan(dto.relativePath)} (${dto.properties.length} properties)`,
+            );
+
+            try {
+              let dtoCode = readFileSync(dto.filePath, "utf-8");
+              let modified = false;
+
+              // Add @ApiModel() if missing
+              if (!dto.hasApiModel) {
+                const modelResult = addApiModelToDTO(
+                  dtoCode,
+                  dto.className,
+                  dto.properties,
+                );
+                if (modelResult.modified) {
+                  dtoCode = modelResult.code;
+                  modified = true;
+                }
+              }
+
+              // Add @Prop() to properties if missing
+              const propResult = addPropToDTOProperties(
+                dtoCode,
+                dto.properties,
+              );
+              if (propResult.modified) {
+                dtoCode = propResult.code;
+                modified = true;
+              }
+
+              if (modified) {
+                writeFileSync(dto.filePath, dtoCode, "utf-8");
+                console.log(`      ${pc.green("✓")} Added Swagger decorators`);
+              } else {
+                console.log(
+                  `      ${pc.dim("—")} All decorators already present`,
+                );
+              }
+            } catch {
+              console.log(`      ${pc.red("✗")} Failed to update DTO`);
+            }
+          }
+        }
+
+        console.log(pc.green(`\n✅ Detection complete!\n`));
+      }
+
+      // ── Generate Swagger config ──────────────────────────────────
+      const authBlock =
+        opts.auth !== false
+          ? `  auth: {
+    username: "admin",
+    password: process.env.SWAGGER_PASSWORD || "swagger-secret",
+  },
+`
+          : "";
+
+      // Build server URL suggestion from project name
+      let suggestedUrl = "https://api.example.com";
+      try {
+        const pkgPath = resolve(root, "package.json");
+        if (existsSync(pkgPath)) {
+          const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+          const projectName = pkg.name || "";
+          if (projectName) {
+            suggestedUrl = `https://${projectName.replace(/^@[^/]+\//, "").replace(/[^a-zA-Z0-9-]/g, "")}.workers.dev`;
+          }
+        }
+      } catch {
+        // fallback
+      }
+
+      const swaggerContent = `import type { SwaggerOptions } from "@varbyte/nest-worker";
+
+/**
+ * Swagger/OpenAPI configuration.
+ *
+ * Generated by \`nest-worker generate swagger\`.
+ * Customize this config and pass it to \`app.useSwagger()\` in your worker.
+ *
+ * @example
+ * \`\`\`ts
+ * import { swaggerConfig } from "./common/config/swagger";
+ * app.useSwagger(swaggerConfig);
+ * \`\`\`
+ */
+export const swaggerConfig: SwaggerOptions = {
+  title: process.env.APP_NAME || "${opts.title || "My API"}",
+  version: "${opts.version || "1.0.0"}",
+  description: "API documentation generated with @varbyte/nest-worker",
+  path: "${opts.path || "/docs"}",
+${authBlock}  servers: [
+    {
+      url: process.env.API_URL || "${suggestedUrl}",
+      description: "API server",
+    },
+  ],
+};
+`;
+
+      const created = writeFileWithForce(
+        swaggerPath,
+        swaggerContent,
+        opts.force ?? false,
+      );
+
+      if (created) {
+        successSummary([relPath], `Swagger config created`);
+      } else {
+        console.log(
+          pc.yellow(
+            `\n  ⚠  ${relPath} already exists (use --force to overwrite)\n`,
+          ),
+        );
+      }
+
+      // ── Update worker.ts (optional) ───────────────────────────────
+      if (opts.updateWorker) {
+        const workerPath = resolve(root, "src", "worker.ts");
+        if (!existsSync(workerPath)) {
+          console.log(
+            pc.yellow(
+              `\n  ⚠  src/worker.ts not found — cannot enable Swagger\n`,
+            ),
+          );
+        } else {
+          let workerCode = readFileSync(workerPath, "utf-8");
+          let workerModified = false;
+
+          // Add swagger import if not present
+          if (!workerCode.includes("./common/config/swagger")) {
+            const importLine = `import { swaggerConfig } from './common/config/swagger';`;
+            const lines = workerCode.split("\n");
+            let lastImportIdx = -1;
+            for (let i = 0; i < lines.length; i++) {
+              if (lines[i].trim().startsWith("import ")) lastImportIdx = i;
+            }
+            if (lastImportIdx >= 0) {
+              lines.splice(lastImportIdx + 1, 0, importLine);
+              workerCode = lines.join("\n");
+              workerModified = true;
+            }
+          }
+
+          // Add useSwagger if not present
+          if (!workerCode.includes("useSwagger")) {
+            workerCode = workerCode.replace(
+              /(app\s*\.\s*(?:use|useErrorFilter))/,
+              `app.useSwagger(swaggerConfig);\n$1`,
+            );
+            workerModified = true;
+          }
+
+          if (workerModified) {
+            writeFileSync(workerPath, workerCode, "utf-8");
+            console.log(
+              pc.green(
+                `  ✓ Updated ${pc.dim("src/worker.ts")} with Swagger setup`,
+              ),
+            );
+          } else {
+            console.log(
+              pc.dim(`  — Swagger already configured in src/worker.ts`),
+            );
+          }
+        }
+      }
+
+      // Show usage hints
+      if (opts.detect || opts.updateWorker) {
+        console.log(pc.bold(`\n📋 Next steps:\n`));
+        if (opts.updateWorker) {
+          console.log(
+            `  ${pc.dim("1.")} Start your dev server: ${pc.cyan("npm run dev")}`,
+          );
+          console.log(
+            `  ${pc.dim("2.")} Open ${pc.cyan(`${opts.path || "/docs"}`)} in your browser`,
+          );
+        } else {
+          console.log(
+            `  ${pc.dim("1.")} Use swagger in worker.ts:\n     ${pc.cyan(
+              `import { swaggerConfig } from "./common/config/swagger";`,
+            )}`,
+          );
+          console.log(`     ${pc.cyan(`app.useSwagger(swaggerConfig);`)}`);
+        }
+        console.log(
+          `  ${pc.dim("2.")} Run ${pc.cyan("nest-worker generate swagger --detect")} to update decorators`,
+        );
+        console.log(``);
+      }
+    },
+  );
+  return cmd;
+}
 
 function createEnvCommand(): Command {
   const cmd = new Command("env");
@@ -1305,6 +1657,7 @@ export function generateCommand(): Command {
   cmd.addCommand(createModelCommand());
   cmd.addCommand(createDtoCommand());
   cmd.addCommand(createProviderCommand());
+  cmd.addCommand(createSwaggerCommand());
   cmd.addCommand(createMigrationCommand());
   cmd.addCommand(createSeedCommand());
   cmd.addCommand(createEnvCommand());

@@ -1,6 +1,6 @@
 // Application
-export { createApplication, NestWorkerApplication } from './core/application';
-export type { WorkerEnv } from './core/application';
+export { createApplication, NestWorkerApplication } from "./core/application";
+export type { WorkerEnv } from "./core/application";
 
 // Decorators
 export {
@@ -24,12 +24,12 @@ export {
   D1,
   UseMiddleware,
   UsePipe,
-} from './decorators/index';
-export type { ModuleOptions } from './decorators/index';
+} from "./decorators/index";
+export type { ModuleOptions } from "./decorators/index";
 
 // Database
-export { D1Repository } from './database/repository';
-export { QueryBuilder } from './database/query-builder';
+export { D1Repository } from "./database/repository";
+export { QueryBuilder } from "./database/query-builder";
 
 // Middlewares
 export {
@@ -39,7 +39,7 @@ export {
   bearerAuth,
   devRateLimit,
   rateLimit,
-} from './extras/middlewares';
+} from "./extras/middlewares";
 export type {
   CorsOptions,
   RequestLogEntry,
@@ -47,13 +47,10 @@ export type {
   RequestLoggerOptions,
   BearerAuthOptions,
   RateLimitOptions,
-} from './extras/middlewares';
+} from "./extras/middlewares";
 
 // Validation helpers
-export {
-  createValidationPipe,
-  validateBody,
-} from './extras/validation';
+export { createValidationPipe, validateBody } from "./extras/validation";
 export type {
   ValidationContext,
   ValidationIssue,
@@ -61,7 +58,7 @@ export type {
   ValidationResult,
   ValidationRule,
   ValidatorFn,
-} from './extras/validation';
+} from "./extras/validation";
 
 // Exceptions
 export {
@@ -72,7 +69,27 @@ export {
   NotFoundException,
   ConflictException,
   InternalServerErrorException,
-} from './core/exceptions';
+} from "./core/exceptions";
+
+// Swagger / OpenAPI
+export {
+  ApiModel,
+  Prop,
+  ApiOperation,
+  ApiBody,
+  ApiResponse,
+  ApiTags,
+  buildOpenApiSpec,
+  createSwaggerMiddleware,
+} from "./extras/swagger";
+export type {
+  ApiModelOptions,
+  PropOptions,
+  ApiOperationOptions,
+  ApiBodyOptions,
+  ApiResponseOptions,
+  SwaggerOptions,
+} from "./extras/swagger";
 
 // Types
 export type {
@@ -88,4 +105,4 @@ export type {
   D1Database,
   D1PreparedStatement,
   D1Result,
-} from './core/types';
+} from "./core/types";

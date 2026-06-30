@@ -2,6 +2,8 @@ import { ErrorFilterFn, MiddlewareFn } from "./types";
 import { Router } from "./router";
 import { Container } from "./container";
 import { finalizeRequestLogging } from "./request-context";
+import type { SwaggerOptions } from "../extras/swagger";
+import { buildOpenApiSpec, createSwaggerMiddleware } from "../extras/swagger";
 
 export interface WorkerEnv {
   [key: string]: unknown;
@@ -57,6 +59,33 @@ export class NestWorkerApplication {
       const response = await this.router.handleError(request, env, ctx, err);
       return finalizeRequestLogging(request, response);
     }
+  }
+
+  // ─── Swagger ────────────────────────────────────────────────────
+
+  /**
+   * Habilita la documentación OpenAPI (Swagger UI) para la aplicación.
+   *
+   * Inspecciona automáticamente todos los controladores registrados y genera
+   * la especificación OpenAPI 3.0.3. Sirve la UI en la ruta configurada
+   * (default: `/docs`) y la spec JSON en `/docs/json`.
+   *
+   * @example
+   * ```ts
+   * app.useSwagger({
+   *   title: 'My API',
+   *   version: '1.0.0',
+   *   auth: { username: 'admin', password: env.SWAGGER_PASS },
+   * });
+   * ```
+   */
+  useSwagger(options: SwaggerOptions = {}): this {
+    const controllers = this.container.getControllers();
+    const spec = buildOpenApiSpec(controllers, options);
+    const middleware = createSwaggerMiddleware(spec, options);
+    // Run before global middlewares so it short-circuits quickly
+    this.globalMiddlewares.unshift(middleware);
+    return this;
   }
 
   /** Returns the fetch handler to export from the Worker */

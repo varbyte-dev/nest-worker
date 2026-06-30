@@ -1,6 +1,11 @@
 import "reflect-metadata";
 import { describe, expect, it } from "vitest";
 import {
+  ApiBody,
+  ApiModel,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
   BadRequestException,
   Body,
   ConflictException,
@@ -24,6 +29,7 @@ import {
   Param,
   Patch,
   Post,
+  Prop,
   Put,
   Query,
   QueryBuilder,
@@ -77,6 +83,15 @@ describe("public API contract", () => {
     expect(NestWorkerApplication.prototype.useErrorFilter).toEqual(
       expect.any(Function),
     );
+    expect(NestWorkerApplication.prototype.useSwagger).toEqual(
+      expect.any(Function),
+    );
+    expect(ApiModel).toEqual(expect.any(Function));
+    expect(Prop).toEqual(expect.any(Function));
+    expect(ApiOperation).toEqual(expect.any(Function));
+    expect(ApiBody).toEqual(expect.any(Function));
+    expect(ApiResponse).toEqual(expect.any(Function));
+    expect(ApiTags).toEqual(expect.any(Function));
     expect(Module).toEqual(expect.any(Function));
     expect(Injectable).toEqual(expect.any(Function));
     expect(Inject).toEqual(expect.any(Function));
