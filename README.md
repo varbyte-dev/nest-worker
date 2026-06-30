@@ -1,9 +1,11 @@
 # nest-worker 🪺
 
 > NestJS-inspired mini framework for **Cloudflare Workers** with native **D1** support.
+> 📖 [Full documentation](https://varbyte-dev.github.io/nest-worker-docs/)
 
 [![npm version](https://img.shields.io/npm/v/@varbyte/nest-worker)](https://www.npmjs.com/package/@varbyte/nest-worker)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Documentation](https://img.shields.io/badge/docs-site-blue)](https://varbyte-dev.github.io/nest-worker-docs/)
 
 ---
 

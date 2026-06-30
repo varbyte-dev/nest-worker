@@ -1,4 +1,7 @@
-# nest-worker Ejemplos 🪺
+# nest-worker Examples 🪺
+
+> 📖 [Documentación completa](https://varbyte-dev.github.io/nest-worker-docs/)
+
 
 ## CLI - Uso
 

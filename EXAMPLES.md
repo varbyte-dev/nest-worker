@@ -1,5 +1,8 @@
 # nest-worker Examples 🪺
 
+> 📖 [Full documentation](https://varbyte-dev.github.io/nest-worker-docs/)
+
+
 ## CLI Usage
 
 All the examples below can be generated automatically using `@varbyte/nest-worker-cli`:
