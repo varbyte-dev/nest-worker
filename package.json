@@ -1,6 +1,6 @@
 {
   "name": "@varbyte/nest-worker",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "description": "NestJS-inspired micro framework for Cloudflare Workers with D1 support",
   "keywords": [
     "cloudflare",
@@ -46,6 +46,7 @@
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "db:migrate": "wrangler d1 execute my-app-db --file=./migrations/001_init.sql",
     "db:seed": "wrangler d1 execute my-app-db --file=./migrations/002_seed.sql"
@@ -55,6 +56,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241205.0",
+    "@vitest/coverage-v8": "^4.1.9",
     "commit-and-tag-version": "^12.7.1",
     "typescript": "^5.3.3",
     "urlpattern-polyfill": "^10.1.0",

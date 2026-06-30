@@ -38,8 +38,8 @@ jobs:
       - name: Typecheck core
         run: pnpm typecheck
 
-      - name: Test core
-        run: pnpm test
+      - name: Test core with coverage
+        run: pnpm test:coverage
 
       - name: Build core
         run: pnpm build
@@ -49,3 +49,11 @@ jobs:
 
       - name: Build CLI
         run: pnpm --filter @varbyte/nest-worker-cli build
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          directory: ./coverage
+          flags: core
+          fail_ci_if_error: false

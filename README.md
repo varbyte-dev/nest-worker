@@ -6,6 +6,8 @@
 [![npm version](https://img.shields.io/npm/v/@varbyte/nest-worker)](https://www.npmjs.com/package/@varbyte/nest-worker)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Documentation](https://img.shields.io/badge/docs-site-blue)](https://varbyte-dev.github.io/nest-worker-docs/)
+[![CI](https://github.com/varbyte-dev/nest-worker/actions/workflows/ci.yml/badge.svg)](https://github.com/varbyte-dev/nest-worker/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/varbyte-dev/nest-worker/graph/badge.svg?token=NWORKER)](https://codecov.io/gh/varbyte-dev/nest-worker)
 
 ---
 
