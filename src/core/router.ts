@@ -290,28 +290,13 @@ async function toErrorResponse(
 
   if (err instanceof HttpException) return err.toResponse();
 
-  // Always log unhandled errors server-side
+  // Always log unhandled errors server-side for debugging
   console.error("[nest-worker] Unhandled error:", err);
 
-  const isProduction = context.env?.APP_ENV === "production";
   const payload: Record<string, unknown> = {
     error: "Internal Server Error",
     statusCode: 500,
   };
-
-  if (!isProduction) {
-    // In development, expose the error type to help debugging
-    // but avoid leaking sensitive stack trace information
-    const hint =
-      err instanceof Error
-        ? err.name || "Error"
-        : typeof err === "string"
-          ? err.slice(0, 200)
-          : "Unknown error";
-    payload.details = {
-      message: hint,
-    };
-  }
 
   return jsonResponse(payload, 500);
 }
