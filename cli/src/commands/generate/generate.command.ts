@@ -17,6 +17,7 @@ import {
   migrationTimestamp,
 } from "../../utils/file-system.js";
 import { detectProject, findProjectRoot } from "../../utils/project.js";
+import { escapeRegex } from "../../utils/regex.js";
 import {
   scanControllers,
   scanDTOs,
@@ -1589,7 +1590,7 @@ function createEnvCommand(): Command {
       let content = readFileSync(wranglerPath, "utf-8");
 
       // Check if already defined
-      const varRegex = new RegExp(`^${varName}\\s*=`, "m");
+      const varRegex = new RegExp(`^${escapeRegex(varName)}\\s*=`, "m");
       if (varRegex.test(content)) {
         if (!opts.force) {
           console.log(
