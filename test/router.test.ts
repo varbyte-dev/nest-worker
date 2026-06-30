@@ -142,9 +142,14 @@ describe("Router", () => {
       }
     }
 
-    const response = await handle(appFor(BoomController), "/boom", {}, {
-      APP_ENV: "production",
-    });
+    const response = await handle(
+      appFor(BoomController),
+      "/boom",
+      {},
+      {
+        APP_ENV: "production",
+      },
+    );
 
     expect(response.status).toBe(500);
     expect(await json(response)).toEqual({
@@ -153,7 +158,7 @@ describe("Router", () => {
     });
   });
 
-  it("should include safe unknown error details outside production", async () => {
+  it("should not expose error details in responses", async () => {
     @Controller("boom")
     class BoomController {
       @Get()
@@ -162,17 +167,21 @@ describe("Router", () => {
       }
     }
 
-    const response = await handle(appFor(BoomController), "/boom", {}, {
-      APP_ENV: "development",
-    });
+    const response = await handle(
+      appFor(BoomController),
+      "/boom",
+      {},
+      {
+        APP_ENV: "development",
+      },
+    );
 
     expect(response.status).toBe(500);
+    // Error details are never exposed in HTTP responses
+    // to prevent stack trace leakage (see CodeQL js/stack-trace-exposure)
     expect(await json(response)).toEqual({
       error: "Internal Server Error",
       statusCode: 500,
-      details: {
-        message: "string failure",
-      },
     });
   });
 
@@ -198,13 +207,16 @@ describe("Router", () => {
   it("should use global error filters for route errors", async () => {
     const filter: ErrorFilterFn = (error, context) => {
       const url = new URL(context.request.url);
-      return new Response(JSON.stringify({
-        message: error instanceof Error ? error.message : "unknown",
-        path: url.pathname,
-      }), {
-        status: 418,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({
+          message: error instanceof Error ? error.message : "unknown",
+          path: url.pathname,
+        }),
+        {
+          status: 418,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     };
 
     @Controller("boom")
@@ -252,12 +264,15 @@ describe("Router", () => {
 
   it("should use global error filters for global middleware errors", async () => {
     const filter: ErrorFilterFn = (error) => {
-      return new Response(JSON.stringify({
-        handled: error instanceof Error ? error.message : "unknown",
-      }), {
-        status: 503,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({
+          handled: error instanceof Error ? error.message : "unknown",
+        }),
+        {
+          status: 503,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     };
 
     @Controller("health")
@@ -322,11 +337,15 @@ describe("Router", () => {
   });
 
   it("should reflect allowed CORS origins from an allowlist", async () => {
-    const response = await handle(corsApp({
-      origin: ["https://app.example", "https://admin.example"],
-    }), "/health", {
-      headers: { Origin: "https://app.example" },
-    });
+    const response = await handle(
+      corsApp({
+        origin: ["https://app.example", "https://admin.example"],
+      }),
+      "/health",
+      {
+        headers: { Origin: "https://app.example" },
+      },
+    );
 
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
       "https://app.example",
@@ -335,12 +354,16 @@ describe("Router", () => {
   });
 
   it("should not apply CORS headers for denied origins", async () => {
-    const response = await handle(corsApp({
-      origin: ["https://app.example"],
-      credentials: true,
-    }), "/health", {
-      headers: { Origin: "https://evil.example" },
-    });
+    const response = await handle(
+      corsApp({
+        origin: ["https://app.example"],
+        credentials: true,
+      }),
+      "/health",
+      {
+        headers: { Origin: "https://evil.example" },
+      },
+    );
 
     expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
     expect(response.headers.get("Access-Control-Allow-Credentials")).toBeNull();
@@ -348,11 +371,15 @@ describe("Router", () => {
   });
 
   it("should support dynamic CORS origin predicates", async () => {
-    const response = await handle(corsApp({
-      origin: (origin) => origin.endsWith(".trusted.example"),
-    }), "/health", {
-      headers: { Origin: "https://api.trusted.example" },
-    });
+    const response = await handle(
+      corsApp({
+        origin: (origin) => origin.endsWith(".trusted.example"),
+      }),
+      "/health",
+      {
+        headers: { Origin: "https://api.trusted.example" },
+      },
+    );
 
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
       "https://api.trusted.example",
@@ -360,12 +387,16 @@ describe("Router", () => {
   });
 
   it("should include credentials only with explicit allowed origins", async () => {
-    const response = await handle(corsApp({
-      origin: "https://app.example",
-      credentials: true,
-    }), "/health", {
-      headers: { Origin: "https://app.example" },
-    });
+    const response = await handle(
+      corsApp({
+        origin: "https://app.example",
+        credentials: true,
+      }),
+      "/health",
+      {
+        headers: { Origin: "https://app.example" },
+      },
+    );
 
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
       "https://app.example",
@@ -382,18 +413,22 @@ describe("Router", () => {
   });
 
   it("should respond to CORS preflight requests for allowed origins", async () => {
-    const response = await handle(corsApp({
-      origin: ["https://app.example"],
-      methods: ["GET", "POST"],
-      allowedHeaders: ["Content-Type", "Authorization"],
-      maxAge: 600,
-    }), "/health", {
-      method: "OPTIONS",
-      headers: {
-        Origin: "https://app.example",
-        "Access-Control-Request-Method": "POST",
+    const response = await handle(
+      corsApp({
+        origin: ["https://app.example"],
+        methods: ["GET", "POST"],
+        allowedHeaders: ["Content-Type", "Authorization"],
+        maxAge: 600,
+      }),
+      "/health",
+      {
+        method: "OPTIONS",
+        headers: {
+          Origin: "https://app.example",
+          "Access-Control-Request-Method": "POST",
+        },
       },
-    });
+    );
 
     expect(response.status).toBe(204);
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
@@ -449,10 +484,12 @@ describe("Router", () => {
       }
     }
 
-    const app = appFor(HealthController).use(requestLogger({
-      generateRequestId: () => "generated-id",
-      sink: (entry) => entries.push(entry),
-    }));
+    const app = appFor(HealthController).use(
+      requestLogger({
+        generateRequestId: () => "generated-id",
+        sink: (entry) => entries.push(entry),
+      }),
+    );
 
     const response = await handle(app, "/health");
 
@@ -480,10 +517,12 @@ describe("Router", () => {
       }
     }
 
-    const app = appFor(HealthController).use(requestLogger({
-      generateRequestId: () => "unused-id",
-      sink: (entry) => entries.push(entry),
-    }));
+    const app = appFor(HealthController).use(
+      requestLogger({
+        generateRequestId: () => "unused-id",
+        sink: (entry) => entries.push(entry),
+      }),
+    );
 
     const response = await handle(app, "/health", {
       headers: { "X-Request-Id": "incoming-id" },
@@ -505,10 +544,12 @@ describe("Router", () => {
     }
 
     const app = appFor(HealthController)
-      .use(requestLogger({
-        generateRequestId: () => "blocked-id",
-        sink: (entry) => entries.push(entry),
-      }))
+      .use(
+        requestLogger({
+          generateRequestId: () => "blocked-id",
+          sink: (entry) => entries.push(entry),
+        }),
+      )
       .use(() => new Response("blocked", { status: 401 }));
 
     const response = await handle(app, "/health");
@@ -537,12 +578,14 @@ describe("Router", () => {
       }
     }
 
-    const app = appFor(HealthController).use(requestLogger({
-      generateRequestId: () => "safe-id",
-      sink: () => {
-        throw new Error("sink unavailable");
-      },
-    }));
+    const app = appFor(HealthController).use(
+      requestLogger({
+        generateRequestId: () => "safe-id",
+        sink: () => {
+          throw new Error("sink unavailable");
+        },
+      }),
+    );
 
     try {
       const response = await handle(app, "/health");
@@ -566,10 +609,12 @@ describe("Router", () => {
       }
     }
 
-    const app = appFor(BoomController).use(requestLogger({
-      generateRequestId: () => "error-id",
-      sink: (entry) => entries.push(entry),
-    }));
+    const app = appFor(BoomController).use(
+      requestLogger({
+        generateRequestId: () => "error-id",
+        sink: (entry) => entries.push(entry),
+      }),
+    );
 
     const response = await handle(app, "/boom");
 
@@ -598,9 +643,11 @@ describe("Router", () => {
       }
     }
 
-    const app = appFor(UsersController).use(requestLogger({
-      sink: (entry) => entries.push(entry),
-    }));
+    const app = appFor(UsersController).use(
+      requestLogger({
+        sink: (entry) => entries.push(entry),
+      }),
+    );
 
     const response = await handle(app, "/users");
 
@@ -623,13 +670,15 @@ describe("Router", () => {
       }
     }
 
-    const app = appFor(BoomController).use(requestLogger({
-      formatError: (error) => ({
-        name: error instanceof Error ? error.name : "unknown",
-        message: "redacted",
+    const app = appFor(BoomController).use(
+      requestLogger({
+        formatError: (error) => ({
+          name: error instanceof Error ? error.name : "unknown",
+          message: "redacted",
+        }),
+        sink: (entry) => entries.push(entry),
       }),
-      sink: (entry) => entries.push(entry),
-    }));
+    );
 
     const response = await handle(app, "/boom");
 
@@ -653,9 +702,11 @@ describe("Router", () => {
       }
     }
 
-    const app = appFor(BoomController).use(requestLogger({
-      sink: (entry) => entries.push(entry),
-    }));
+    const app = appFor(BoomController).use(
+      requestLogger({
+        sink: (entry) => entries.push(entry),
+      }),
+    );
 
     const response = await handle(app, "/boom");
 
@@ -678,10 +729,12 @@ describe("Router", () => {
       }
     }
 
-    const app = appFor(BoomController).use(requestLogger({
-      includeError: false,
-      sink: (entry) => entries.push(entry),
-    }));
+    const app = appFor(BoomController).use(
+      requestLogger({
+        includeError: false,
+        sink: (entry) => entries.push(entry),
+      }),
+    );
 
     const response = await handle(app, "/boom");
 
@@ -893,9 +946,11 @@ describe("Router", () => {
     @Controller("users")
     class UsersController {
       @Post(":id")
-      @UsePipe(validateBody<{ name?: unknown }>((body) => {
-        if (typeof body.name !== "string") return "name is required";
-      }))
+      @UsePipe(
+        validateBody<{ name?: unknown }>((body) => {
+          if (typeof body.name !== "string") return "name is required";
+        }),
+      )
       create(@Param("id") id: string, @Body() body: { name: string }) {
         return { id, ...body };
       }
@@ -920,16 +975,18 @@ describe("Router", () => {
     @Controller("users")
     class UsersController {
       @Get()
-      @UsePipe(createValidationPipe({
-        type: "query",
-        key: "limit",
-        validate: (value) => {
-          const parsed = Number(value);
-          return Number.isInteger(parsed) && parsed > 0
-            ? true
-            : { message: "limit must be a positive integer" };
-        },
-      }))
+      @UsePipe(
+        createValidationPipe({
+          type: "query",
+          key: "limit",
+          validate: (value) => {
+            const parsed = Number(value);
+            return Number.isInteger(parsed) && parsed > 0
+              ? true
+              : { message: "limit must be a positive integer" };
+          },
+        }),
+      )
       find(@Query("limit") limit: string) {
         return { limit };
       }
@@ -942,10 +999,12 @@ describe("Router", () => {
       error: "Validation failed",
       statusCode: 400,
       details: {
-        issues: [{
-          message: "limit must be a positive integer",
-          field: "limit",
-        }],
+        issues: [
+          {
+            message: "limit must be a positive integer",
+            field: "limit",
+          },
+        ],
       },
     });
   });
@@ -954,16 +1013,18 @@ describe("Router", () => {
     @Controller("users")
     class UsersController {
       @Post()
-      @UsePipe(validateBody<Record<string, unknown>>((body) => {
-        const issues = [];
-        if (typeof body.name !== "string") {
-          issues.push({ field: "name", message: "name is required" });
-        }
-        if (typeof body.email !== "string") {
-          issues.push({ field: "email", message: "email is required" });
-        }
-        return issues;
-      }))
+      @UsePipe(
+        validateBody<Record<string, unknown>>((body) => {
+          const issues = [];
+          if (typeof body.name !== "string") {
+            issues.push({ field: "name", message: "name is required" });
+          }
+          if (typeof body.email !== "string") {
+            issues.push({ field: "email", message: "email is required" });
+          }
+          return issues;
+        }),
+      )
       create(@Body() body: { name: string; email: string }) {
         return body;
       }
