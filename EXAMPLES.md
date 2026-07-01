@@ -64,6 +64,7 @@ Full command reference:
 8. [Provider Types (useClass / useValue / useFactory)](#8-provider-types)
 9. [Swagger / OpenAPI Documentation](#9-swagger--openapi-documentation)
 10. [Complete Application Example](#10-complete-application-example)
+11. [WebSocket & Durable Objects](#11-websocket--durable-objects)
 
 ---
 
@@ -1222,6 +1223,189 @@ app
 
 export default app.handler;
 ```
+
+---
+
+## 11. WebSocket & Durable Objects
+
+Build real-time, bi-directional applications at the edge with WebSocket
+upgrade handlers and stateful Durable Objects.
+
+### WebSocket Upgrade Handler
+
+Use `@WebSocket()` to mark a controller method as a WebSocket upgrade
+endpoint. The method receives the upgrade `Request` and returns a `Response`
+with `status: 101` and a `webSocket` property.
+
+```ts
+// ws.controller.ts
+import { Controller, WebSocket, wsUpgradeResponse } from '@varbyte/nest-worker';
+
+@Controller('ws')
+export class WsController {
+  @WebSocket('/echo')
+  handleEcho() {
+    const [client, server] = new WebSocketPair();
+    server.accept();
+
+    server.addEventListener('message', (event) => {
+      // Echo the message back
+      server.send(`Echo: ${event.data}`);
+    });
+
+    server.addEventListener('close', () => {
+      console.log('Connection closed');
+    });
+
+    return wsUpgradeResponse(client);
+  }
+}
+```
+
+Register the controller in your module as usual:
+
+```ts
+// worker.ts
+import 'reflect-metadata';
+import { Module, createApplication } from '@varbyte/nest-worker';
+import { WsController } from './ws.controller';
+
+@Module({ controllers: [WsController] })
+class AppModule {}
+
+export default createApplication(AppModule).handler;
+```
+
+The WebSocket route uses `GET` by default and the router automatically
+passes through `101` upgrade responses without wrapping them with CORS or
+other response transforms.
+
+### Durable Object with WebSocket Lifecycle
+
+For stateful real-time applications (chat rooms, game sessions, live
+collaboration), use `@DurableObject()` with the lifecycle decorators
+`@OnOpen()`, `@OnMessage()`, and `@OnClose()`.
+
+```ts
+// chat-room.ts
+import {
+  DurableObject,
+  OnOpen,
+  OnMessage,
+  OnClose,
+  handleWebSocketLifecycle,
+} from '@varbyte/nest-worker';
+
+interface Env {
+  CHAT_ROOM: DurableObjectNamespace;
+}
+
+@DurableObject()
+export class ChatRoom {
+  private sessions: WebSocket[] = [];
+  private state: DurableObjectState;
+
+  constructor(state: DurableObjectState, env: Env) {
+    this.state = state;
+  }
+
+  /** Required — Workers calls fetch() on the DO for each upgrade request */
+  async fetch(request: Request): Promise<Response> {
+    return handleWebSocketLifecycle(this, request);
+  }
+
+  @OnOpen()
+  onOpen(connection: WebSocket) {
+    this.sessions.push(connection);
+    connection.send(JSON.stringify({
+      type: 'system',
+      message: `Welcome! ${this.sessions.length} user(s) connected.`,
+    }));
+  }
+
+  @OnMessage()
+  onMessage(connection: WebSocket, message: string | ArrayBuffer) {
+    // Broadcast to all connected sessions
+    for (const session of this.sessions) {
+      if (session !== connection) {
+        session.send(message);
+      }
+    }
+  }
+
+  @OnClose()
+  onClose(connection: WebSocket) {
+    this.sessions = this.sessions.filter((s) => s !== connection);
+  }
+}
+```
+
+Configure the Durable Object in `wrangler.toml`:
+
+```toml
+name = "my-realtime-app"
+main = "worker.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[durable_objects.bindings]]
+name = "CHAT_ROOM"
+class_name = "ChatRoom"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["ChatRoom"]
+```
+
+Register the DO class as a provider in your module and create the HTTP
+endpoint that upgrades connections:
+
+```ts
+// worker.ts
+import 'reflect-metadata';
+import { Module, createApplication, Get, Controller } from '@varbyte/nest-worker';
+import { ChatRoom } from './chat-room';
+import { wsUpgradeResponse } from '@varbyte/nest-worker';
+
+@Controller('chat')
+export class ChatController {
+  @Get()
+  async connect(req: Request, env: { CHAT_ROOM: DurableObjectNamespace }) {
+    const url = new URL(req.url);
+    const doId = env.CHAT_ROOM.idFromName('default-room');
+    const stub = env.CHAT_ROOM.get(doId);
+    return stub.fetch(req);
+  }
+}
+
+@Module({
+  controllers: [ChatController],
+  providers: [ChatRoom],  // Register the DO class
+})
+class AppModule {}
+
+export default createApplication(AppModule).handler;
+```
+
+### Available Decorators
+
+| Decorator | Target | Description |
+|-----------|--------|-------------|
+| `@WebSocket(path?)` | Method | Marks a controller method as a WebSocket upgrade handler (`GET` route with `isWebSocket: true`) |
+| `@DurableObject()` | Class | Marks a class as a Durable Object with state management |
+| `@OnOpen()` | Method | Handles new WebSocket connections inside a `@DurableObject()` class |
+| `@OnMessage()` | Method | Handles incoming messages inside a `@DurableObject()` class |
+| `@OnClose()` | Method | Handles connection close inside a `@DurableObject()` class |
+
+### Utility Functions
+
+| Function | Description |
+|----------|-------------|
+| `wsUpgradeResponse(webSocket)` | Creates a `Response` with `status: 101` and the given `webSocket` |
+| `handleWebSocketLifecycle(instance, request)` | Wires up `@OnOpen`/`@OnMessage`/`@OnClose` handlers inside a DO's `fetch()` |
+| `isWebSocketRoute(route)` | Returns `true` if a `RouteDefinition` is a WebSocket handler |
+| `isDurableObjectClass(target)` | Returns `true` if a class is decorated with `@DurableObject()` |
+| `getWsEvents(target)` | Returns the registered WebSocket lifecycle events for a class |
 
 ---
 

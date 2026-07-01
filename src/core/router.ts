@@ -120,6 +120,8 @@ export class Router {
         const params = match.pathname.groups as Record<string, string>;
         try {
           const response = await route.handler(request, env, ctx, params);
+          // WebSocket upgrade responses (101) must not be re-wrapped
+          if (response.status === 101) return response;
           return applyCorsHeaders(request, toHeadResponse(request, response));
         } catch (err: any) {
           return this.handleError(request, env, ctx, err);

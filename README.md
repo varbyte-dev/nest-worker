@@ -16,6 +16,7 @@
 - **Dependency Injection** — `@Injectable` + constructor injection
 - **D1 Integration** — `@D1()` injects the binding, `D1Repository` and `QueryBuilder` ready to use
 - **Middlewares** — CORS, logger, rate limiting, bearer auth included
+- **WebSocket / Durable Objects** — `@WebSocket()`, `@DurableObject()`, `@OnOpen()`, `@OnMessage()`, `@OnClose()` decorators for real-time bi-directional communication at the edge
 - **HTTP Exceptions** — `NotFoundException`, `BadRequestException`, etc.
 - **Swagger / OpenAPI** — auto-generated API documentation with `@ApiModel()` and `@Prop()` decorators, served via Swagger UI with optional Basic Auth
 - **Zero runtime dependencies** — only `reflect-metadata`

@@ -1,17 +1,12 @@
 export type HttpMethod =
-  | "GET"
-  | "POST"
-  | "PUT"
-  | "PATCH"
-  | "DELETE"
-  | "OPTIONS"
-  | "HEAD";
+  "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS" | "HEAD";
 
 export interface RouteDefinition {
   method: HttpMethod;
   path: string;
   handlerName: string;
   middlewares?: MiddlewareFn[];
+  isWebSocket?: boolean;
 }
 
 export type MiddlewareFn = (

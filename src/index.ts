@@ -49,6 +49,20 @@ export type {
   RateLimitOptions,
 } from "./extras/middlewares";
 
+// WebSocket / Durable Objects
+export {
+  WebSocket,
+  DurableObject,
+  OnOpen,
+  OnMessage,
+  OnClose,
+  wsUpgradeResponse,
+  handleWebSocketLifecycle,
+  isDurableObjectClass,
+  isWebSocketRoute,
+  getWsEvents,
+} from "./extras/websocket";
+
 // Validation helpers
 export { createValidationPipe, validateBody } from "./extras/validation";
 export type {
