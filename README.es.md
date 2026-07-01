@@ -62,7 +62,11 @@ npx @varbyte/nest-worker-cli
 | `nest-worker generate migration <desc>` | Generar una migración SQL |
 | `nest-worker generate seed <nombre>` | Generar un seed SQL |
 | `nest-worker generate env <var>` | Agregar variable de entorno a `wrangler.toml` |
-| `nest-worker generate swagger` | Generar configuración Swagger/OpenAPI con detección automática |
+| `nest-worker generate swagger` | Generar configuración de Swagger/OpenAPI con detección automática |
+| `nest-worker generate websocket <nombre>` | Generar un controlador WebSocket |
+| `nest-worker generate queue <nombre>` | Generar un par productor/consumidor de colas |
+| `nest-worker generate scheduled <nombre>` | Generar un controlador de tareas programadas (cron) |
+| `nest-worker generate static-assets` | Generar un controlador de archivos estáticos |
 | `nest-worker info` | Mostrar información del proyecto y framework |
 | `nest-worker list` | Listar recursos generados |
 | `nest-worker doctor` | Diagnosticar problemas de configuración |
@@ -246,6 +250,240 @@ export class UsersService {
   }
 }
 ```
+
+---
+
+## WebSocket y Durable Objects
+
+Construye aplicaciones bidireccionales en tiempo real en el edge.
+
+### Decoradores
+
+| Decorador | Objetivo | Descripción |
+|-----------|----------|-------------|
+| `@WebSocket(path?)` | Método | Marca un método como endpoint de actualización WebSocket |
+| `@DurableObject()` | Clase | Marca una clase como Durable Object con gestión de estado |
+| `@OnOpen()` | Método | Maneja nuevas conexiones WebSocket dentro de una clase `@DurableObject()` |
+| `@OnMessage()` | Método | Maneja mensajes entrantes dentro de una clase `@DurableObject()` |
+| `@OnClose()` | Método | Maneja cierre de conexión dentro de una clase `@DurableObject()` |
+
+### Utilidades
+
+| Función | Descripción |
+|----------|-------------|
+| `wsUpgradeResponse(webSocket)` | Crea una `Response` con `status: 101` y el `webSocket` dado |
+| `handleWebSocketLifecycle(instance, request)` | Conecta los manejadores `@OnOpen`/`@OnMessage`/`@OnClose` dentro del `fetch()` del DO |
+
+### Ejemplo rápido
+
+```ts
+import { Controller, WebSocket, wsUpgradeResponse } from '@varbyte/nest-worker';
+
+@Controller('ws')
+export class WsController {
+  @WebSocket('/echo')
+  handleEcho() {
+    const [client, server] = new WebSocketPair();
+    server.accept();
+    server.addEventListener('message', (event) => {
+      server.send(`Echo: ${event.data}`);
+    });
+    return wsUpgradeResponse(client);
+  }
+}
+```
+
+---
+
+## Productor y Consumidor de Colas
+
+Integra Cloudflare Queues para producción y consumo confiable de mensajes.
+
+### Decoradores
+
+| Decorador | Objetivo | Descripción |
+|-----------|----------|-------------|
+| `@QueueProducer(bindingName)` | Propiedad | Inyecta un binding de cola (`QueueProducerType`) |
+| `@QueueConsumer(queueName, opts?)` | Método | Marca un método como manejador de mensajes de cola |
+
+### Utilidades
+
+| Función | Descripción |
+|----------|-------------|
+| `createQueueHandler(app, controllers)` | Crea un manejador `queue()` para el export de Cloudflare Worker |
+
+### Ejemplo rápido
+
+```ts
+import { Injectable, QueueProducer, QueueProducerType } from '@varbyte/nest-worker';
+
+@Injectable()
+export class NotificationService {
+  @QueueProducer('QUEUE')
+  declare queue: QueueProducerType;
+
+  async send(payload: Record<string, unknown>) {
+    await this.queue.send(payload);
+  }
+}
+```
+
+```ts
+import { Controller, QueueConsumer } from '@varbyte/nest-worker';
+
+@Controller()
+export class NotificationConsumer {
+  @QueueConsumer('notifications', { batchSize: 5, maxRetries: 3 })
+  async handle(batch: MessageBatch) {
+    for (const msg of batch.messages) {
+      console.log('Procesando:', msg.body);
+    }
+  }
+}
+```
+
+Conexión en `worker.ts`:
+
+```ts
+import { createApplication, createQueueHandler } from '@varbyte/nest-worker';
+
+const app = createApplication(AppModule);
+
+export default {
+  fetch: app.handler,
+  queue: createQueueHandler(
+    (cls) => app.container.resolveController(cls),
+    [NotificationConsumer],
+  ),
+};
+```
+
+---
+
+## Tareas Programadas (@Scheduled)
+
+Ejecuta código en horarios programados usando Workers Cron Triggers.
+
+### Decorador
+
+| Decorador | Objetivo | Descripción |
+|-----------|----------|-------------|
+| `@Scheduled({ cron, name?, timeout? })` | Método | Marca un método para ejecución programada. `cron` es obligatorio; `name` para identificación; `timeout` en ms (por defecto 60_000) |
+
+### Utilidades
+
+| Función | Descripción |
+|----------|-------------|
+| `createScheduledHandler(app, controllers)` | Crea un manejador `scheduled()` para el export de Cloudflare Worker |
+
+### Ejemplo rápido
+
+```ts
+import { Controller, Scheduled } from '@varbyte/nest-worker';
+
+@Controller()
+export class HealthScheduledController {
+  @Scheduled({ cron: '*/5 * * * *', name: 'health-check' })
+  async healthCheck() {
+    console.log('Health check ejecutado:', new Date().toISOString());
+  }
+}
+```
+
+Conexión en `worker.ts`:
+
+```ts
+import { createApplication, createScheduledHandler } from '@varbyte/nest-worker';
+
+const app = createApplication(AppModule);
+
+export default {
+  fetch: app.handler,
+  scheduled: createScheduledHandler(
+    (cls) => app.container.resolveController(cls),
+    [HealthScheduledController],
+  ),
+};
+```
+
+---
+
+## Archivos Estáticos (@ServeStatic)
+
+Sirve archivos estáticos (HTML, CSS, JS, imágenes) desde tu bucket de Workers Sites.
+
+### Decorador y Middleware
+
+| Decorador | Objetivo | Descripción |
+|-----------|----------|-------------|
+| `@ServeStatic({ root, index })` | Método | Sirve archivos estáticos desde un controlador. `root` es la ruta base; `index` es el archivo SPA fallback |
+
+| Función | Descripción |
+|----------|-------------|
+| `serveStaticAssets({ root, index, contentBinding? })` | Middleware global que sirve archivos estáticos antes de enrutar |
+
+### Ejemplo rápido
+
+```ts
+// Middleware (nivel de app)
+import { serveStaticAssets } from '@varbyte/nest-worker';
+
+app.use(serveStaticAssets({ root: '/public', index: 'index.html' }));
+```
+
+```ts
+// Decorador (nivel de controlador)
+import { Controller, ServeStatic } from '@varbyte/nest-worker';
+
+@Controller()
+export class AssetsController {
+  @ServeStatic({ root: '/public', index: 'index.html' })
+  serve() {
+    return new Response('No encontrado', { status: 404 });
+  }
+}
+```
+
+---
+
+## Swagger / OpenAPI
+
+Genera automáticamente documentación de API con Swagger UI, protegida por Basic Auth.
+
+### Configuración
+
+```ts
+import { createApplication } from '@varbyte/nest-worker';
+import type { SwaggerOptions } from '@varbyte/nest-worker';
+
+const app = createApplication(AppModule);
+
+app.useSwagger({
+  title: 'My API',
+  version: '1.0.0',
+  description: 'Documentación de la API',
+  auth: {
+    username: 'admin',
+    password: 'swagger-secret',  // Usa variable de entorno en producción
+  },
+  servers: [
+    { url: 'https://api.example.com', description: 'Producción' },
+  ],
+} satisfies SwaggerOptions);
+```
+
+Visita `/docs` en tu navegador para ver la interfaz de Swagger UI.
+
+### Decoradores
+
+| Decorador | Objetivo | Descripción |
+|-----------|----------|-------------|
+| `@ApiModel({ description })` | Clase | Marca una clase como modelo/esquema de OpenAPI |
+| `@Prop({ description?, example? })` | Propiedad | Describe una propiedad del modelo |
+| `@ApiOperation({ summary, description })` | Método | Describe una operación de endpoint |
+| `@ApiResponse({ status, description })` | Método | Describe una respuesta de endpoint |
+| `@ApiTags(name)` | Clase | Agrupa endpoints por etiqueta |
+| `@ApiBody({ description, type })` | Método | Describe el cuerpo de la solicitud |
 
 ---
 
