@@ -46,6 +46,16 @@ import {
   rateLimit,
   requestLogger,
   validateBody,
+  QueueProducer,
+  QueueConsumer,
+  createQueueHandler,
+  WebSocket,
+  DurableObject,
+  OnOpen,
+  OnMessage,
+  OnClose,
+  wsUpgradeResponse,
+  handleWebSocketLifecycle,
 } from "../src/index";
 import type {
   BearerAuthOptions,
@@ -74,6 +84,8 @@ import type {
   ValidationRule,
   ValidatorFn,
   WorkerEnv,
+  QueueProducerType,
+  QueueConsumerOptions,
 } from "../src/index";
 
 describe("public API contract", () => {
@@ -121,6 +133,16 @@ describe("public API contract", () => {
     expect(NotFoundException).toEqual(expect.any(Function));
     expect(ConflictException).toEqual(expect.any(Function));
     expect(InternalServerErrorException).toEqual(expect.any(Function));
+    expect(QueueProducer).toEqual(expect.any(Function));
+    expect(QueueConsumer).toEqual(expect.any(Function));
+    expect(createQueueHandler).toEqual(expect.any(Function));
+    expect(WebSocket).toEqual(expect.any(Function));
+    expect(DurableObject).toEqual(expect.any(Function));
+    expect(OnOpen).toEqual(expect.any(Function));
+    expect(OnMessage).toEqual(expect.any(Function));
+    expect(OnClose).toEqual(expect.any(Function));
+    expect(wsUpgradeResponse).toEqual(expect.any(Function));
+    expect(handleWebSocketLifecycle).toEqual(expect.any(Function));
   });
 
   it("should keep public type exports available to consumers", () => {
@@ -183,6 +205,13 @@ describe("public API contract", () => {
     const validationOptions: ValidationPipeOptions = {
       message: "Invalid request",
     };
+    const queueProducer: QueueProducerType = {
+      send: () => Promise.resolve(),
+      sendBatch: () => Promise.resolve(),
+    };
+    const queueConsumerOptions: QueueConsumerOptions = {
+      batchSize: 5,
+    };
     const errorFilterContext = {} as ErrorFilterContext;
 
     expect([
@@ -212,7 +241,9 @@ describe("public API contract", () => {
       validationRule,
       validationOptions,
       errorFilterContext,
-    ]).toHaveLength(26);
+      queueProducer,
+      queueConsumerOptions,
+    ]).toHaveLength(28);
   });
 });
 

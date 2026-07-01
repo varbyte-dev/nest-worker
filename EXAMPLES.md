@@ -65,6 +65,7 @@ Full command reference:
 9. [Swagger / OpenAPI Documentation](#9-swagger--openapi-documentation)
 10. [Complete Application Example](#10-complete-application-example)
 11. [WebSocket & Durable Objects](#11-websocket--durable-objects)
+12. [Queue Producer & Consumer](#12-queue-producer--consumer)
 
 ---
 
@@ -1406,6 +1407,163 @@ export default createApplication(AppModule).handler;
 | `isWebSocketRoute(route)` | Returns `true` if a `RouteDefinition` is a WebSocket handler |
 | `isDurableObjectClass(target)` | Returns `true` if a class is decorated with `@DurableObject()` |
 | `getWsEvents(target)` | Returns the registered WebSocket lifecycle events for a class |
+
+---
+
+## 12. Queue Producer & Consumer
+
+Integrate Cloudflare Queues for reliable message production and consumption
+at the edge.
+
+### Producer (@QueueProducer)
+
+Use `@QueueProducer()` on a property to send messages to a queue. The
+property becomes a `QueueProducer` with `send()` and `sendBatch()` methods.
+
+```ts
+// notification.service.ts
+import { Injectable, QueueProducer, QueueProducerType } from '@varbyte/nest-worker';
+
+@Injectable()
+export class NotificationService {
+  @QueueProducer()
+  declare queue: QueueProducerType;
+
+  async sendWelcome(user: { id: number; email: string }) {
+    await this.queue.send({
+      type: 'welcome_email',
+      userId: user.id,
+      email: user.email,
+    });
+  }
+
+  async sendBulk(users: Array<{ id: number }>) {
+    await this.queue.sendBatch(
+      users.map((u) => ({ type: 'bulk_notification', userId: u.id })),
+    );
+  }
+}
+```
+
+> **Important:** Always use `declare` when declaring a `@QueueProducer()`
+> property to prevent TypeScript's class field initialisation from shadowing
+> the decorator's getter.
+
+#### Custom Binding Name
+
+By default, `@QueueProducer()` reads from `env.QUEUE`. Pass a different
+binding name to use another queue binding:
+
+```ts
+class EmailProducer {
+  @QueueProducer('EMAIL_QUEUE')
+  declare emailQueue: QueueProducerType;
+
+  async send(email: Email) {
+    await this.emailQueue.send(email);
+  }
+}
+```
+
+### Consumer (@QueueConsumer)
+
+Use `@QueueConsumer(queueName, options?)` on a controller method to consume
+messages from a queue. The method receives the `MessageBatch` when messages
+are delivered.
+
+```ts
+// notification.consumer.ts
+import { Controller, QueueConsumer } from '@varbyte/nest-worker';
+
+@Controller()
+export class NotificationConsumer {
+  @QueueConsumer('send-queue', { batchSize: 10, maxRetries: 3 })
+  async handle(batch: MessageBatch) {
+    for (const msg of batch.messages) {
+      const { type, userId, email } = msg.body;
+
+      switch (type) {
+        case 'welcome_email':
+          console.log(`Sending welcome to ${email} (user #${userId})`);
+          break;
+        case 'bulk_notification':
+          console.log(`Notifying user #${userId}`);
+          break;
+        default:
+          console.warn(`Unknown message type: ${type}`);
+      }
+    }
+  }
+}
+```
+
+### Wiring the Queue Handler
+
+Export the queue handler from your worker entry-point alongside the
+fetch handler:
+
+```ts
+// worker.ts
+import 'reflect-metadata';
+import { Module, createApplication, createQueueHandler } from '@varbyte/nest-worker';
+import { NotificationService } from './notification.service';
+import { NotificationConsumer } from './notification.consumer';
+
+@Module({
+  controllers: [NotificationConsumer],
+  providers: [NotificationService],
+})
+class AppModule {}
+
+const app = createApplication(AppModule);
+
+export default {
+  fetch: app.handler.fetch,
+  queue: createQueueHandler(
+    (ctrlClass) => app.container.resolveController(ctrlClass),
+    app.container.getControllers(),
+  ),
+};
+```
+
+> **Note:** The `app.container` property gives you access to the DI
+> container so `createQueueHandler` can properly resolve controller
+> instances with their dependencies.
+
+### wrangler.toml Configuration
+
+Add your queue bindings in `wrangler.toml`:
+
+```toml
+name = "my-queue-worker"
+main = "worker.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[queues.producers]]
+binding = "QUEUE"
+queue = "send-queue"
+
+[[queues.consumers]]
+queue = "send-queue"
+max_batch_size = 10
+max_retries = 3
+```
+
+### Available Decorators
+
+| Decorator | Target | Description |
+|-----------|--------|-------------|
+| `@QueueProducer(binding?)` | Property | Marks a property as a queue producer with `send()` / `sendBatch()` |
+| `@QueueConsumer(queue, opts?)` | Method | Marks a method as a consumer handler for the named queue |
+
+### Utility Functions
+
+| Function | Description |
+|----------|-------------|
+| `createQueueHandler(resolveController, controllers)` | Builds a `queue` export handler that dispatches to `@QueueConsumer` methods |
+| `getQueueProducerBindings(target)` | Returns registered queue producer bindings |
+| `getQueueConsumers(target)` | Returns registered queue consumer handlers |
 
 ---
 

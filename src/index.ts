@@ -49,6 +49,21 @@ export type {
   RateLimitOptions,
 } from "./extras/middlewares";
 
+// Queue Producer / Consumer
+export {
+  QueueProducer,
+  QueueConsumer,
+  createQueueHandler,
+  getQueueProducerBindings,
+  getQueueConsumers,
+  QueueBindingNotFoundError,
+} from "./extras/queue";
+export type {
+  QueueProducerType,
+  QueueConsumerOptions,
+  QueueBindingDefinition,
+} from "./extras/queue";
+
 // WebSocket / Durable Objects
 export {
   WebSocket,
