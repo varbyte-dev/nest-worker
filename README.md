@@ -18,6 +18,7 @@
 - **Middlewares** — CORS, logger, rate limiting, bearer auth included
 - **WebSocket / Durable Objects** — `@WebSocket()`, `@DurableObject()`, `@OnOpen()`, `@OnMessage()`, `@OnClose()` decorators for real-time bi-directional communication at the edge
 - **Queue Producer / Consumer** — `@QueueProducer()` and `@QueueConsumer()` decorators for Cloudflare Queues integration with `createQueueHandler()`
+- **Cron Triggers** — `@Scheduled()` decorator with `createScheduledHandler()` for Workers Cron Triggers
 - **HTTP Exceptions** — `NotFoundException`, `BadRequestException`, etc.
 - **Swagger / OpenAPI** — auto-generated API documentation with `@ApiModel()` and `@Prop()` decorators, served via Swagger UI with optional Basic Auth
 - **Zero runtime dependencies** — only `reflect-metadata`

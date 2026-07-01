@@ -56,6 +56,8 @@ import {
   OnClose,
   wsUpgradeResponse,
   handleWebSocketLifecycle,
+  Scheduled,
+  createScheduledHandler,
 } from "../src/index";
 import type {
   BearerAuthOptions,
@@ -143,6 +145,8 @@ describe("public API contract", () => {
     expect(OnClose).toEqual(expect.any(Function));
     expect(wsUpgradeResponse).toEqual(expect.any(Function));
     expect(handleWebSocketLifecycle).toEqual(expect.any(Function));
+    expect(Scheduled).toEqual(expect.any(Function));
+    expect(createScheduledHandler).toEqual(expect.any(Function));
   });
 
   it("should keep public type exports available to consumers", () => {

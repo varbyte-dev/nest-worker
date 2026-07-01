@@ -66,6 +66,7 @@ Full command reference:
 10. [Complete Application Example](#10-complete-application-example)
 11. [WebSocket & Durable Objects](#11-websocket--durable-objects)
 12. [Queue Producer & Consumer](#12-queue-producer--consumer)
+13. [Cron Triggers (@Scheduled)](#13-cron-triggers-scheduled)
 
 ---
 
@@ -1564,6 +1565,121 @@ max_retries = 3
 | `createQueueHandler(resolveController, controllers)` | Builds a `queue` export handler that dispatches to `@QueueConsumer` methods |
 | `getQueueProducerBindings(target)` | Returns registered queue producer bindings |
 | `getQueueConsumers(target)` | Returns registered queue consumer handlers |
+
+---
+
+## 13. Cron Triggers (@Scheduled)
+
+Run code on a schedule using Cloudflare Workers Cron Triggers with the
+`@Scheduled()` decorator.
+
+### Basic Usage
+
+Decorate a controller method with `@Scheduled()` and provide a cron
+expression. The method is automatically called on the defined schedule.
+
+```ts
+// health.controller.ts
+import { Controller, Scheduled } from '@varbyte/nest-worker';
+
+@Controller()
+export class HealthController {
+  @Scheduled({ cron: '0 * * * *' })
+  async healthCheck() {
+    console.log('Health check running (every hour)');
+    // Perform periodic checks
+  }
+}
+```
+
+### Multiple Handlers
+
+Register multiple `@Scheduled()` handlers in the same or different
+controllers — all matching handlers run on every scheduled tick.
+
+```ts
+import { Controller, Scheduled } from '@varbyte/nest-worker';
+
+@Controller()
+export class ScheduledTasksController {
+
+  @Scheduled({ cron: '0 * * * *', name: 'hourly-cleanup' })
+  async hourlyCleanup() {
+    // Runs at the start of every hour
+    await this.cleanupService.removeOldRecords();
+  }
+
+  @Scheduled({ cron: '0 0 * * *', name: 'daily-report' })
+  async dailyReport() {
+    // Runs at midnight every day
+    await this.reportService.generateDaily();
+  }
+
+  @Scheduled({
+    cron: '0 0 * * 0',
+    name: 'weekly-maintenance',
+    timeout: '10 minutes',
+  })
+  async weeklyMaintenance() {
+    // Runs at midnight on Sunday
+    await this.maintenanceService.run();
+  }
+}
+```
+
+### Wiring the Scheduled Handler
+
+Export a `scheduled` handler from your worker entry-point alongside the
+fetch handler:
+
+```ts
+// worker.ts
+import 'reflect-metadata';
+import {
+  Module, createApplication, createScheduledHandler,
+} from '@varbyte/nest-worker';
+import { HealthController } from './health.controller';
+
+@Module({ controllers: [HealthController] })
+class AppModule {}
+
+const app = createApplication(AppModule);
+
+export default {
+  fetch: app.handler.fetch,
+  scheduled: createScheduledHandler(
+    (cls) => app.container.resolveController(cls),
+    app.container.getControllers(),
+  ),
+};
+```
+
+### wrangler.toml Configuration
+
+Add the cron trigger to `wrangler.toml`:
+
+```toml
+name = "my-scheduled-worker"
+main = "worker.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[triggers]]
+crons = ["0 * * * *", "0 0 * * *"]
+```
+
+### Decorator Reference
+
+| Decorator | Target | Description |
+|-----------|--------|-------------|
+| `@Scheduled(options)` | Method | Registers a cron trigger handler. `options.cron` is the cron expression; `name` and `timeout` are optional. |
+
+### Utility Functions
+
+| Function | Description |
+|----------|-------------|
+| `createScheduledHandler(resolveController, controllers)` | Builds a `scheduled` export handler that dispatches to all `@Scheduled()` methods |
+| `getScheduledHandlers(target)` | Returns registered scheduled handlers for a class |
 
 ---
 

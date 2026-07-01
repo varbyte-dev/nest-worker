@@ -78,6 +78,14 @@ export {
   getWsEvents,
 } from "./extras/websocket";
 
+// Cron / Scheduled Triggers
+export {
+  Scheduled,
+  createScheduledHandler,
+  getScheduledHandlers,
+} from "./extras/cron";
+export type { ScheduledOptions } from "./extras/cron";
+
 // Validation helpers
 export { createValidationPipe, validateBody } from "./extras/validation";
 export type {
