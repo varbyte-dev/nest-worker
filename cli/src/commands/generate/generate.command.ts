@@ -1638,6 +1638,293 @@ function createEnvCommand(): Command {
 }
 
 // ========================================================================
+//  WEBSOCKET
+// ========================================================================
+
+function createWebSocketCommand(): Command {
+  const cmd = new Command("websocket");
+  cmd.description("Generate a WebSocket controller");
+  cmd.argument("<name>", "Controller name (e.g. chat)");
+  cmd.option("-f, --force", "Overwrite existing files");
+  cmd.action(async (name: string, opts: { force?: boolean }) => {
+    const root = projectGuard();
+    const info = parseName(name);
+    const dir = ensureModuleDir(root, info.kebab);
+    const relDir = `src/modules/${info.kebab}`;
+    const ctrlFile = `${info.kebab}.websocket.ts`;
+    const ctrlPath = resolve(dir, ctrlFile);
+    const relPath = `${relDir}/${ctrlFile}`;
+
+    await ensureDir(dir);
+
+    const content = buildWebSocketTemplate(info);
+    const created = writeFileWithForce(ctrlPath, content, opts.force ?? false);
+
+    if (created) {
+      successSummary(
+        [relPath],
+        `WebSocket controller "${info.pascal}" created`,
+      );
+      console.log(
+        pc.dim(
+          `  💡 Add it to your module and register in wrangler.toml if using Durable Objects.\n`,
+        ),
+      );
+    } else {
+      console.log(
+        pc.yellow(
+          `\n  ⚠  ${relPath} already exists (use --force to overwrite)\n`,
+        ),
+      );
+    }
+  });
+  return cmd;
+}
+
+function buildWebSocketTemplate(info: NameInfo): string {
+  const ctrlName = `${info.pascal}WebSocketController`;
+
+  return `import { Controller, WebSocket, wsUpgradeResponse } from '@varbyte/nest-worker';
+
+/**
+ * WebSocket controller for ${info.human}.
+ *
+ * Upgrade path: GET /${info.kebab}
+ *
+ * For Durable Object stateful connections, decorate a class with @DurableObject()
+ * and use @OnOpen / @OnMessage / @OnClose lifecycle decorators.
+ */
+@Controller('${info.kebab}')
+export class ${ctrlName} {
+  @WebSocket('/echo')
+  handleEcho() {
+    const [client, server] = new WebSocketPair();
+    server.accept();
+
+    server.addEventListener('message', (event) => {
+      server.send(\`Echo: \${event.data}\`);
+    });
+
+    server.addEventListener('close', () => {
+      console.log('${info.human} WebSocket closed');
+    });
+
+    return wsUpgradeResponse(client);
+  }
+}
+`;
+}
+
+// ========================================================================
+//  QUEUE
+// ========================================================================
+
+function createQueueCommand(): Command {
+  const cmd = new Command("queue");
+  cmd.description("Generate a Queue producer/consumer pair");
+  cmd.argument("<name>", "Queue name (e.g. notifications)");
+  cmd.option("-f, --force", "Overwrite existing files");
+  cmd.action(async (name: string, opts: { force?: boolean }) => {
+    const root = projectGuard();
+    const info = parseName(name);
+    const dir = ensureModuleDir(root, info.kebab);
+    const relDir = `src/modules/${info.kebab}`;
+
+    await ensureDir(dir);
+
+    const producerFile = `${info.kebab}.producer.ts`;
+    const consumerFile = `${info.kebab}.consumer.ts`;
+    const producerPath = resolve(dir, producerFile);
+    const consumerPath = resolve(dir, consumerFile);
+    const producerRel = `${relDir}/${producerFile}`;
+    const consumerRel = `${relDir}/${consumerFile}`;
+
+    const producerContent = buildQueueProducerTemplate(info);
+    const consumerContent = buildQueueConsumerTemplate(info);
+
+    const createdProducer = writeFileWithForce(
+      producerPath,
+      producerContent,
+      opts.force ?? false,
+    );
+    const createdConsumer = writeFileWithForce(
+      consumerPath,
+      consumerContent,
+      opts.force ?? false,
+    );
+
+    const files = [];
+    if (createdProducer) files.push(producerRel);
+    if (createdConsumer) files.push(consumerRel);
+
+    if (files.length > 0) {
+      successSummary(files, `Queue "${info.pascal}" created`);
+      console.log(
+        pc.dim(
+          `  💡 Add \`${info.kebab}\` to [[queues.producers]] and [[queues.consumers]] in wrangler.toml.\n`,
+        ),
+      );
+    } else {
+      console.log(
+        pc.yellow(`\n  ⚠  Files already exist (use --force to overwrite)\n`),
+      );
+    }
+  });
+  return cmd;
+}
+
+function buildQueueProducerTemplate(info: NameInfo): string {
+  const svcName = `${info.pascal}Producer`;
+  return `import { Injectable, QueueProducer, QueueProducerType } from '@varbyte/nest-worker';
+
+@Injectable()
+export class ${svcName} {
+  @QueueProducer('QUEUE')
+  declare queue: QueueProducerType;
+
+  async send(payload: Record<string, unknown>): Promise<void> {
+    await this.queue.send(payload);
+  }
+
+  async sendBatch(items: Record<string, unknown>[]): Promise<void> {
+    await this.queue.sendBatch(items);
+  }
+}
+`;
+}
+
+function buildQueueConsumerTemplate(info: NameInfo): string {
+  const ctrlName = `${info.pascal}Consumer`;
+  return `import { Controller, QueueConsumer } from '@varbyte/nest-worker';
+
+@Controller()
+export class ${ctrlName} {
+  @QueueConsumer('${info.kebab}', { batchSize: 5, maxRetries: 3 })
+  async handle(batch: MessageBatch) {
+    for (const msg of batch.messages) {
+      console.log('[${info.kebab}] Processing message:', msg.id, msg.body);
+      // TODO: implement your message handling logic
+    }
+  }
+}
+`;
+}
+
+// ========================================================================
+//  SCHEDULED (Cron)
+// ========================================================================
+
+function createScheduledCommand(): Command {
+  const cmd = new Command("scheduled");
+  cmd.description("Generate a scheduled (cron) controller");
+  cmd.argument("<name>", "Task name (e.g. daily-report)");
+  cmd.option("-c, --cron <expr>", "Cron expression", "0 * * * *");
+  cmd.option("-f, --force", "Overwrite existing files");
+  cmd.action(async (name: string, opts: { cron: string; force?: boolean }) => {
+    const root = projectGuard();
+    const info = parseName(name);
+    const dir = ensureModuleDir(root, info.kebab);
+    const relDir = `src/modules/${info.kebab}`;
+    const ctrlFile = `${info.kebab}.scheduled.ts`;
+    const ctrlPath = resolve(dir, ctrlFile);
+    const relPath = `${relDir}/${ctrlFile}`;
+
+    await ensureDir(dir);
+
+    const content = buildScheduledTemplate(info, opts.cron);
+    const created = writeFileWithForce(ctrlPath, content, opts.force ?? false);
+
+    if (created) {
+      successSummary([relPath], `Scheduled task "${info.pascal}" created`);
+      console.log(
+        pc.dim(
+          `  💡 Add your cron expression to [[triggers]] in wrangler.toml: crons = ["${opts.cron}"]\n`,
+        ),
+      );
+    } else {
+      console.log(
+        pc.yellow(
+          `\n  ⚠  ${relPath} already exists (use --force to overwrite)\n`,
+        ),
+      );
+    }
+  });
+  return cmd;
+}
+
+function buildScheduledTemplate(info: NameInfo, cronExpr: string): string {
+  const ctrlName = `${info.pascal}ScheduledController`;
+  return `import { Controller, Scheduled } from '@varbyte/nest-worker';
+
+@Controller()
+export class ${ctrlName} {
+  @Scheduled({ cron: '${cronExpr}', name: '${info.kebab}' })
+  async run() {
+    console.log('[${info.kebab}] Running scheduled task...');
+    // TODO: implement your scheduled logic
+  }
+}
+`;
+}
+
+// ========================================================================
+//  STATIC ASSETS
+// ========================================================================
+
+function createStaticAssetsCommand(): Command {
+  const cmd = new Command("static-assets");
+  cmd.description("Generate a static assets controller");
+  cmd.option("-r, --root <path>", "Static files root path", "/public");
+  cmd.option("-i, --index <file>", "SPA fallback file", "index.html");
+  cmd.option("-f, --force", "Overwrite existing files");
+  cmd.action(async (opts: { root: string; index: string; force?: boolean }) => {
+    const root = projectGuard();
+    const dir = resolve(root, "src", "common", "controllers");
+    const relDir = "src/common/controllers";
+    const ctrlFile = "static-assets.controller.ts";
+    const ctrlPath = resolve(dir, ctrlFile);
+    const relPath = `${relDir}/${ctrlFile}`;
+
+    await ensureDir(dir);
+
+    const content = buildStaticAssetsTemplate(opts.root, opts.index);
+    const created = writeFileWithForce(ctrlPath, content, opts.force ?? false);
+
+    if (created) {
+      successSummary([relPath], `Static assets controller created`);
+      console.log(
+        pc.dim(
+          `  💡 Make sure you have [site] bucket in wrangler.toml pointing to your static files.\n`,
+        ),
+      );
+    } else {
+      console.log(
+        pc.yellow(
+          `\n  ⚠  ${relPath} already exists (use --force to overwrite)\n`,
+        ),
+      );
+    }
+  });
+  return cmd;
+}
+
+function buildStaticAssetsTemplate(
+  rootPath: string,
+  indexFile: string,
+): string {
+  return `import { Controller, ServeStatic } from '@varbyte/nest-worker';
+
+@Controller()
+export class StaticAssetsController {
+  @ServeStatic({ root: '${rootPath}', index: '${indexFile}' })
+  assets() {
+    return new Response('Not Found', { status: 404 });
+  }
+}
+`;
+}
+
+// ========================================================================
 //  GENERATE command (parent)
 // ========================================================================
 
@@ -1662,6 +1949,10 @@ export function generateCommand(): Command {
   cmd.addCommand(createMigrationCommand());
   cmd.addCommand(createSeedCommand());
   cmd.addCommand(createEnvCommand());
+  cmd.addCommand(createWebSocketCommand());
+  cmd.addCommand(createQueueCommand());
+  cmd.addCommand(createScheduledCommand());
+  cmd.addCommand(createStaticAssetsCommand());
 
   // Default: show help if no subcommand
   cmd.action(() => cmd.help());
