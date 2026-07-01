@@ -62,6 +62,12 @@ app
 
 export default {
   fetch: app.handler,
-  queue: createQueueHandler(app, NotificationConsumer),
-  scheduled: createScheduledHandler(app, [HealthScheduledController]),
+  queue: createQueueHandler(
+    (cls) => app.container.resolveController(cls),
+    [NotificationConsumer],
+  ),
+  scheduled: createScheduledHandler(
+    (cls) => app.container.resolveController(cls),
+    [HealthScheduledController],
+  ),
 };
