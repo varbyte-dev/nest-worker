@@ -25,6 +25,12 @@ nest-worker generate resource comments
 nest-worker generate guard admin
 nest-worker generate middleware request-timer
 
+# Generate WebSocket, Queue, Cron, and Static Assets
+nest-worker generate websocket chat
+nest-worker generate queue notifications
+nest-worker generate scheduled daily-report
+nest-worker generate static-assets
+
 # See what was generated
 nest-worker list
 nest-worker doctor
@@ -44,6 +50,10 @@ Full command reference:
 | `nest-worker generate filter <name>` | Error-catching middleware filter |
 | `nest-worker generate migration <desc>` | Timestamped SQL migration file |
 | `nest-worker generate swagger` | Swagger/OpenAPI configuration file |
+| `nest-worker generate websocket <name>` | WebSocket upgrade controller (echo handler) |
+| `nest-worker generate queue <name>` | Queue producer + consumer pair |
+| `nest-worker generate scheduled <name>` | Cron-triggered scheduled task controller |
+| `nest-worker generate static-assets` | Static assets controller with SPA fallback |
 
 ---
 

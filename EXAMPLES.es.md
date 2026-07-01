@@ -25,6 +25,12 @@ nest-worker generate resource comments
 nest-worker generate guard admin
 nest-worker generate middleware request-timer
 
+# Generar WebSocket, Colas, Cron y Assets Estáticos
+nest-worker generate websocket chat
+nest-worker generate queue notifications
+nest-worker generate scheduled daily-report
+nest-worker generate static-assets
+
 # Ver lo que se generó
 nest-worker list
 nest-worker doctor
@@ -44,6 +50,10 @@ Referencia completa de comandos:
 | `nest-worker generate filter <nombre>` | Filtro middleware para capturar errores |
 | `nest-worker generate migration <desc>` | Archivo de migración SQL con timestamp |
 | `nest-worker generate swagger` | Archivo de configuración de Swagger/OpenAPI |
+| `nest-worker generate websocket <nombre>` | Controlador de WebSocket upgrade |
+| `nest-worker generate queue <nombre>` | Par productor/consumidor de colas |
+| `nest-worker generate scheduled <nombre>` | Controlador de tareas programadas (cron) |
+| `nest-worker generate static-assets` | Controlador de archivos estáticos con SPA fallback |
 
 ---
 
@@ -64,6 +74,10 @@ Referencia completa de comandos:
 8. [Tipos de providers (useClass / useValue / useFactory)](#8-tipos-de-providers)
 9. [Documentación Swagger / OpenAPI](#9-documentación-swagger--openapi)
 10. [Ejemplo de aplicación completa](#10-ejemplo-de-aplicación-completa)
+11. [WebSocket y Durable Objects](#11-websocket-y-durable-objects)
+12. [Productor y Consumidor de Colas](#12-productor-y-consumidor-de-colas)
+13. [Tareas Programadas (@Scheduled)](#13-tareas-programadas-scheduled)
+14. [Archivos Estáticos (@ServeStatic)](#14-archivos-estáticos-servestatic)
 
 ---
 
@@ -1078,6 +1092,503 @@ app.use(logger()).use(cors({ origin: '*' })).use(devRateLimit({ windowMs: 60_000
 
 export default app.handler;
 ```
+
+---
+
+## 11. WebSocket y Durable Objects
+
+Construye aplicaciones bidireccionales en tiempo real en el edge con
+manejadores de actualización WebSocket y Durable Objects con estado.
+
+### Manejador de WebSocket
+
+Usa `@WebSocket()` para marcar un método de controlador como un endpoint
+de actualización WebSocket. El método recibe la `Request` de actualización
+y devuelve una `Response` con `status: 101` y una propiedad `webSocket`.
+
+```ts
+// ws.controller.ts
+import { Controller, WebSocket, wsUpgradeResponse } from '@varbyte/nest-worker';
+
+@Controller('ws')
+export class WsController {
+  @WebSocket('/echo')
+  handleEcho() {
+    const [client, server] = new WebSocketPair();
+    server.accept();
+
+    server.addEventListener('message', (event) => {
+      // Echo del mensaje
+      server.send(`Echo: ${event.data}`);
+    });
+
+    server.addEventListener('close', () => {
+      console.log('Conexión cerrada');
+    });
+
+    return wsUpgradeResponse(client);
+  }
+}
+```
+
+Registra el controlador en tu módulo como siempre:
+
+```ts
+// worker.ts
+import 'reflect-metadata';
+import { Module, createApplication } from '@varbyte/nest-worker';
+import { WsController } from './ws.controller';
+
+@Module({ controllers: [WsController] })
+class AppModule {}
+
+export default createApplication(AppModule).handler;
+```
+
+La ruta WebSocket usa `GET` por defecto y el router automáticamente
+pasa las respuestas `101` sin envolverlas con CORS u otras transformaciones.
+
+### Durable Object con ciclo de vida WebSocket
+
+Para aplicaciones en tiempo real con estado (salas de chat, sesiones de
+juego, colaboración en vivo), usa `@DurableObject()` con los decoradores
+de ciclo de vida `@OnOpen()`, `@OnMessage()` y `@OnClose()`.
+
+```ts
+// chat-room.ts
+import {
+  DurableObject,
+  OnOpen,
+  OnMessage,
+  OnClose,
+  handleWebSocketLifecycle,
+} from '@varbyte/nest-worker';
+
+interface Env {
+  CHAT_ROOM: DurableObjectNamespace;
+}
+
+@DurableObject()
+export class ChatRoom {
+  private sessions: WebSocket[] = [];
+  private state: DurableObjectState;
+
+  constructor(state: DurableObjectState, env: Env) {
+    this.state = state;
+  }
+
+  /** Requerido — Workers llama fetch() en el DO para cada solicitud upgrade */
+  async fetch(request: Request): Promise<Response> {
+    return handleWebSocketLifecycle(this, request);
+  }
+
+  @OnOpen()
+  onOpen(connection: WebSocket) {
+    this.sessions.push(connection);
+    connection.send(JSON.stringify({
+      type: 'system',
+      message: `¡Bienvenido! ${this.sessions.length} usuario(s) conectados.`,
+    }));
+  }
+
+  @OnMessage()
+  onMessage(connection: WebSocket, message: string | ArrayBuffer) {
+    // Broadcast a todas las sesiones conectadas
+    for (const session of this.sessions) {
+      if (session !== connection) {
+        session.send(message);
+      }
+    }
+  }
+
+  @OnClose()
+  onClose(connection: WebSocket) {
+    this.sessions = this.sessions.filter((s) => s !== connection);
+  }
+}
+```
+
+Configura el Durable Object en `wrangler.toml`:
+
+```toml
+name = "mi-app-tiempo-real"
+main = "worker.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[durable_objects.bindings]]
+name = "CHAT_ROOM"
+class_name = "ChatRoom"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["ChatRoom"]
+```
+
+Registra la clase DO como provider en tu módulo y crea el endpoint
+HTTP que actualiza las conexiones:
+
+```ts
+// worker.ts
+import 'reflect-metadata';
+import { Module, createApplication, Get, Controller } from '@varbyte/nest-worker';
+import { ChatRoom } from './chat-room';
+import { wsUpgradeResponse } from '@varbyte/nest-worker';
+
+@Controller('chat')
+export class ChatController {
+  @Get()
+  async connect(req: Request, env: { CHAT_ROOM: DurableObjectNamespace }) {
+    const url = new URL(req.url);
+    const doId = env.CHAT_ROOM.idFromName('sala-principal');
+    const stub = env.CHAT_ROOM.get(doId);
+    return stub.fetch(req);
+  }
+}
+
+@Module({
+  controllers: [ChatController],
+  providers: [ChatRoom],  // Registra la clase DO
+})
+class AppModule {}
+
+export default createApplication(AppModule).handler;
+```
+
+### Decoradores Disponibles
+
+| Decorador | Objetivo | Descripción |
+|-----------|----------|-------------|
+| `@WebSocket(path?)` | Método | Marca un método como manejador de actualización WebSocket (ruta `GET` con `isWebSocket: true`) |
+| `@DurableObject()` | Clase | Marca una clase como Durable Object con gestión de estado |
+| `@OnOpen()` | Método | Maneja nuevas conexiones WebSocket dentro de una clase `@DurableObject()` |
+| `@OnMessage()` | Método | Maneja mensajes entrantes dentro de una clase `@DurableObject()` |
+| `@OnClose()` | Método | Maneja cierre de conexión dentro de una clase `@DurableObject()` |
+
+### Funciones de Utilidad
+
+| Función | Descripción |
+|----------|-------------|
+| `wsUpgradeResponse(webSocket)` | Crea una `Response` con `status: 101` y el `webSocket` dado |
+| `handleWebSocketLifecycle(instance, request)` | Conecta los manejadores `@OnOpen`/`@OnMessage`/`@OnClose` dentro del `fetch()` del DO |
+| `isWebSocketRoute(route)` | Devuelve `true` si una `RouteDefinition` es un manejador WebSocket |
+| `isDurableObjectClass(target)` | Devuelve `true` si una clase está decorada con `@DurableObject()` |
+| `getWsEvents(target)` | Devuelve los eventos de ciclo de vida WebSocket registrados para una clase |
+
+---
+
+## 12. Productor y Consumidor de Colas
+
+Integra Cloudflare Queues para producción y consumo confiable de mensajes
+en el edge.
+
+### Productor (@QueueProducer)
+
+Usa `@QueueProducer()` para inyectar un productor de cola tipado:
+
+```ts
+// notification.service.ts
+import { Injectable, QueueProducer, QueueProducerType } from '@varbyte/nest-worker';
+
+@Injectable()
+export class NotificationService {
+  @QueueProducer('QUEUE')
+  declare queue: QueueProducerType;
+
+  async sendWelcome(userId: string, email: string) {
+    await this.queue.send({ type: 'welcome', userId, email });
+  }
+
+  async sendBulk(users: Array<{ userId: string; email: string }>) {
+    await this.queue.sendBatch(
+      users.map((u) => ({ body: { type: 'welcome', ...u } })),
+    );
+  }
+}
+```
+
+El binding `declare` es requerido — el decorador `@QueueProducer` solo
+proporciona metadatos; el binding real es inyectado por Cloudflare en
+el entorno de ejecución de Workers.
+
+#### Nombre de Binding Personalizado
+
+Si tu `wrangler.toml` usa un nombre de binding diferente a `QUEUE`:
+
+```ts
+@QueueProducer('EMAIL_QUEUE')
+declare emailQueue: QueueProducerType;
+```
+
+### Consumidor (@QueueConsumer)
+
+Usa `@QueueConsumer()` en un método del controlador para recibir mensajes
+de una cola:
+
+```ts
+// notification.consumer.ts
+import { Controller, QueueConsumer } from '@varbyte/nest-worker';
+
+@Controller()
+export class NotificationConsumer {
+  @QueueConsumer('notifications', { batchSize: 5, maxRetries: 3 })
+  async handle(batch: MessageBatch) {
+    for (const msg of batch.messages) {
+      const { type, userId, email } = msg.body as any;
+      console.log(`Procesando: ${type} para ${email}`);
+      // TODO: enviar email, actualizar DB, etc.
+    }
+  }
+}
+```
+
+### Configuración del Manejador de Colas
+
+Conecta todo en `worker.ts`:
+
+```ts
+// worker.ts
+import 'reflect-metadata';
+import {
+  Module,
+  createApplication,
+  createQueueHandler,
+} from '@varbyte/nest-worker';
+import { NotificationService } from './notification.service';
+import { NotificationConsumer } from './notification.consumer';
+
+@Module({
+  controllers: [NotificationConsumer],
+  providers: [NotificationService],
+})
+class AppModule {}
+
+const app = createApplication(AppModule);
+
+export default {
+  fetch: app.handler,
+  queue: createQueueHandler(app, NotificationConsumer),
+};
+```
+
+### Configuración de wrangler.toml
+
+```toml
+name = "mi-app-colas"
+main = "worker.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[queues.producers]]
+binding = "QUEUE"
+queue = "notifications"
+
+[[queues.consumers]]
+queue = "notifications"
+max_batch_size = 5
+max_retries = 3
+```
+
+### Decoradores Disponibles
+
+| Decorador | Objetivo | Descripción |
+|-----------|----------|-------------|
+| `@QueueProducer(name)` | Propiedad | Inyecta un binding de cola `QueueProducerType` |
+| `@QueueConsumer(queueName, opts?)` | Método | Marca un método como manejador de mensajes de cola |
+
+### Funciones de Utilidad
+
+| Función | Descripción |
+|----------|-------------|
+| `createQueueHandler(app, ...controllers)` | Crea un manejador `queue()` para el export de Cloudflare Worker |
+
+---
+
+## 13. Tareas Programadas (@Scheduled)
+
+Ejecuta código en horarios programados usando los Triggers de Cron
+de Cloudflare Workers.
+
+### Uso Básico
+
+```ts
+// health.scheduled.ts
+import { Controller, Scheduled } from '@varbyte/nest-worker';
+
+@Controller()
+export class HealthScheduledController {
+  @Scheduled({ cron: '*/5 * * * *', name: 'health-check' })
+  async healthCheck() {
+    console.log('Health check ejecutado:', new Date().toISOString());
+    // TODO: verificar DB, servicios externos, etc.
+  }
+}
+```
+
+### Múltiples Manejadores
+
+Puedes tener varios métodos `@Scheduled()` en el mismo controlador o en
+diferentes controladores:
+
+```ts
+// tasks.scheduled.ts
+import { Controller, Scheduled } from '@varbyte/nest-worker';
+
+@Controller()
+export class ScheduledTasksController {
+  @Scheduled({ cron: '0 * * * *', name: 'hourly-cleanup' })
+  async hourlyCleanup() {
+    console.log('Limpiando registros antiguos...');
+  }
+
+  @Scheduled({ cron: '0 6 * * *', name: 'daily-report' })
+  async dailyReport() {
+    console.log('Generando reporte diario...');
+  }
+
+  @Scheduled({ cron: '0 3 * * 0', name: 'weekly-maintenance', timeout: 120_000 })
+  async weeklyMaintenance() {
+    console.log('Mantenimiento semanal...');
+  }
+}
+```
+
+### Configuración del Manejador Programado
+
+Conecta los controladores con `createScheduledHandler`:
+
+```ts
+// worker.ts
+import 'reflect-metadata';
+import {
+  Module,
+  createApplication,
+  createScheduledHandler,
+} from '@varbyte/nest-worker';
+import { HealthScheduledController } from './health.scheduled';
+
+@Module({ controllers: [HealthScheduledController] })
+class AppModule {}
+
+const app = createApplication(AppModule);
+
+export default {
+  fetch: app.handler,
+  scheduled: createScheduledHandler(app, [HealthScheduledController]),
+};
+```
+
+### Configuración de wrangler.toml
+
+```toml
+name = "mi-app-cron"
+main = "worker.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[triggers]]
+crons = ["*/5 * * * *", "0 * * * *", "0 6 * * *"]
+```
+
+### Referencia del Decorador
+
+| Decorador | Objetivo | Descripción |
+|-----------|----------|-------------|
+| `@Scheduled({ cron, name?, timeout? })` | Método | Marca un método para ejecución programada. `cron` es obligatorio; `name` para identificación; `timeout` en ms (por defecto 60_000) |
+
+### Funciones de Utilidad
+
+| Función | Descripción |
+|----------|-------------|
+| `createScheduledHandler(app, controllers)` | Crea un manejador `scheduled()` para el export de Cloudflare Worker |
+
+---
+
+## 14. Archivos Estáticos (@ServeStatic)
+
+Sirve archivos estáticos (HTML, CSS, JS, imágenes) directamente desde
+el bucket de assets de Cloudflare Workers.
+
+### Middleware (Nivel de App)
+
+Agrega `serveStaticAssets` como middleware global:
+
+```ts
+// worker.ts
+import 'reflect-metadata';
+import {
+  Module,
+  createApplication,
+  serveStaticAssets,
+} from '@varbyte/nest-worker';
+
+@Module({})
+class AppModule {}
+
+const app = createApplication(AppModule);
+
+app.use(serveStaticAssets({
+  root: '/public',
+  index: 'index.html',
+  contentBinding: '__STATIC_CONTENT',
+}));
+
+export default app.handler;
+```
+
+### Decorador (@ServeStatic)
+
+Alternativamente, usa el decorador `@ServeStatic()` en un controlador:
+
+```ts
+// assets.controller.ts
+import { Controller, ServeStatic } from '@varbyte/nest-worker';
+
+@Controller()
+export class AssetsController {
+  @ServeStatic({ root: '/public', index: 'index.html' })
+  serve() {
+    return new Response('No encontrado', { status: 404 });
+  }
+}
+```
+
+### SPA Fallback
+
+Para aplicaciones de una sola página (SPA), redirige todas las rutas no
+encontradas a `index.html`:
+
+```ts
+app.use(serveStaticAssets({
+  root: '/public',
+  index: 'index.html',  // SPA fallback
+}));
+```
+
+### Configuración de wrangler.toml
+
+```toml
+name = "mi-app-estatica"
+main = "worker.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[site]
+bucket = "./public"
+entry-point = "."
+```
+
+### Referencia del Decorador
+
+| Decorador | Objetivo | Descripción |
+|-----------|----------|-------------|
+| `@ServeStatic({ root, index })` | Método | Sirve archivos estáticos desde un controlador. `root` es la ruta base; `index` es el archivo por defecto para SPA |
+
+### Referencia del Middleware
+
+| Función | Descripción |
+|----------|-------------|
+| `serveStaticAssets({ root, index, contentBinding? })` | Middleware global que sirve archivos estáticos antes de enrutar |
 
 ---
 
