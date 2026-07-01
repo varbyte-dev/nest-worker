@@ -100,13 +100,13 @@ export function serveStaticAssets(
 
     // Check if the path matches the root prefix
     if (root) {
-      const normalizedRoot = root.replace(/\/+$/, "");
+      const normalizedRoot = root.endsWith("/") ? root.slice(0, -1) : root;
       if (!filePath.startsWith(normalizedRoot)) return; // not for us
       filePath = filePath.slice(normalizedRoot.length) || "/";
     }
 
-    // Normalize: remove leading slash, collapse double slashes
-    filePath = filePath.replace(/\/+/g, "/").replace(/^\//, "");
+    // Normalize: collapse double slashes, remove leading slash
+    filePath = filePath.split("/").filter(Boolean).join("/");
 
     // If empty, serve the index
     if (!filePath) {
