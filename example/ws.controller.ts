@@ -4,12 +4,10 @@ import { Controller, WebSocket, wsUpgradeResponse } from "../src/index";
 export class WsController {
   @WebSocket("/echo")
   handleEcho() {
-    const pair = new WebSocketPair();
-    const client = pair[0];
-    const server = pair[1];
+    const [client, server] = new WebSocketPair();
     server.accept();
 
-    server.addEventListener("message", (event: MessageEvent) => {
+    server.addEventListener("message", (event) => {
       server.send(`Echo: ${event.data}`);
     });
 
