@@ -55,8 +55,10 @@ export class Router {
           ctrlClass,
         ) || [];
       const statusCode =
-        Reflect.getMetadata(`${HTTP_CODE_KEY}:${route.handlerName}`, ctrlClass) ||
-        200;
+        Reflect.getMetadata(
+          `${HTTP_CODE_KEY}:${route.handlerName}`,
+          ctrlClass,
+        ) || 200;
       const routePipes: PipeFn[] =
         Reflect.getMetadata(`${PIPES_KEY}:${route.handlerName}`, ctrlClass) ||
         [];
@@ -84,14 +86,18 @@ export class Router {
             pathParams,
             paramsMeta,
           );
-          const pipedArgs = await applyPipes([...ctrlPipes, ...routePipes], args, {
-            request: req,
-            env,
-            ctx,
-            params: pathParams,
-            parameters: paramsMeta,
-            route,
-          });
+          const pipedArgs = await applyPipes(
+            [...ctrlPipes, ...routePipes],
+            args,
+            {
+              request: req,
+              env,
+              ctx,
+              params: pathParams,
+              parameters: paramsMeta,
+              route,
+            },
+          );
           const result = await instance[route.handlerName](...pipedArgs);
           return toResponse(result, statusCode);
         },
@@ -114,6 +120,8 @@ export class Router {
         const params = match.pathname.groups as Record<string, string>;
         try {
           const response = await route.handler(request, env, ctx, params);
+          // WebSocket upgrade responses (101) must not be re-wrapped
+          if (response.status === 101) return response;
           return applyCorsHeaders(request, toHeadResponse(request, response));
         } catch (err: any) {
           return this.handleError(request, env, ctx, err);
@@ -144,11 +152,15 @@ export class Router {
     error: unknown,
   ): Promise<Response> {
     setRequestLogError(request, error);
-    const response = await toErrorResponse(error, {
-      request,
-      env,
-      ctx,
-    }, this.errorFilters);
+    const response = await toErrorResponse(
+      error,
+      {
+        request,
+        env,
+        ctx,
+      },
+      this.errorFilters,
+    );
     return applyCorsHeaders(request, toHeadResponse(request, response));
   }
 }
@@ -280,30 +292,15 @@ async function toErrorResponse(
 
   if (err instanceof HttpException) return err.toResponse();
 
-  const isProduction = context.env?.APP_ENV === "production";
+  // Always log unhandled errors server-side for debugging
+  console.error("[nest-worker] Unhandled error:", err);
+
   const payload: Record<string, unknown> = {
     error: "Internal Server Error",
     statusCode: 500,
   };
 
-  if (!isProduction) {
-    payload.details = {
-      message: errorMessage(err),
-    };
-  }
-
   return jsonResponse(payload, 500);
-}
-
-function errorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "string") return err;
-
-  try {
-    return JSON.stringify(err);
-  } catch {
-    return String(err);
-  }
 }
 
 function toHeadResponse(request: Request, response: Response): Response {

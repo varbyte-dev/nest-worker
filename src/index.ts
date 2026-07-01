@@ -49,6 +49,51 @@ export type {
   RateLimitOptions,
 } from "./extras/middlewares";
 
+// Queue Producer / Consumer
+export {
+  QueueProducer,
+  QueueConsumer,
+  createQueueHandler,
+  getQueueProducerBindings,
+  getQueueConsumers,
+  QueueBindingNotFoundError,
+} from "./extras/queue";
+export type {
+  QueueProducerType,
+  QueueConsumerOptions,
+  QueueBindingDefinition,
+} from "./extras/queue";
+
+// WebSocket / Durable Objects
+export {
+  WebSocket,
+  DurableObject,
+  OnOpen,
+  OnMessage,
+  OnClose,
+  wsUpgradeResponse,
+  handleWebSocketLifecycle,
+  isDurableObjectClass,
+  isWebSocketRoute,
+  getWsEvents,
+} from "./extras/websocket";
+
+// Cron / Scheduled Triggers
+export {
+  Scheduled,
+  createScheduledHandler,
+  getScheduledHandlers,
+} from "./extras/cron";
+export type { ScheduledOptions } from "./extras/cron";
+
+// Static Assets
+export {
+  ServeStatic,
+  serveStaticAssets,
+  getServeStaticEntries,
+} from "./extras/static-assets";
+export type { ServeStaticOptions } from "./extras/static-assets";
+
 // Validation helpers
 export { createValidationPipe, validateBody } from "./extras/validation";
 export type {

@@ -25,6 +25,12 @@ nest-worker generate resource comments
 nest-worker generate guard admin
 nest-worker generate middleware request-timer
 
+# Generate WebSocket, Queue, Cron, and Static Assets
+nest-worker generate websocket chat
+nest-worker generate queue notifications
+nest-worker generate scheduled daily-report
+nest-worker generate static-assets
+
 # See what was generated
 nest-worker list
 nest-worker doctor
@@ -44,6 +50,10 @@ Full command reference:
 | `nest-worker generate filter <name>` | Error-catching middleware filter |
 | `nest-worker generate migration <desc>` | Timestamped SQL migration file |
 | `nest-worker generate swagger` | Swagger/OpenAPI configuration file |
+| `nest-worker generate websocket <name>` | WebSocket upgrade controller (echo handler) |
+| `nest-worker generate queue <name>` | Queue producer + consumer pair |
+| `nest-worker generate scheduled <name>` | Cron-triggered scheduled task controller |
+| `nest-worker generate static-assets` | Static assets controller with SPA fallback |
 
 ---
 
@@ -64,6 +74,10 @@ Full command reference:
 8. [Provider Types (useClass / useValue / useFactory)](#8-provider-types)
 9. [Swagger / OpenAPI Documentation](#9-swagger--openapi-documentation)
 10. [Complete Application Example](#10-complete-application-example)
+11. [WebSocket & Durable Objects](#11-websocket--durable-objects)
+12. [Queue Producer & Consumer](#12-queue-producer--consumer)
+13. [Cron Triggers (@Scheduled)](#13-cron-triggers-scheduled)
+14. [Static Assets (@ServeStatic)](#14-static-assets-servestatic)
 
 ---
 
@@ -1222,6 +1236,554 @@ app
 
 export default app.handler;
 ```
+
+---
+
+## 11. WebSocket & Durable Objects
+
+Build real-time, bi-directional applications at the edge with WebSocket
+upgrade handlers and stateful Durable Objects.
+
+### WebSocket Upgrade Handler
+
+Use `@WebSocket()` to mark a controller method as a WebSocket upgrade
+endpoint. The method receives the upgrade `Request` and returns a `Response`
+with `status: 101` and a `webSocket` property.
+
+```ts
+// ws.controller.ts
+import { Controller, WebSocket, wsUpgradeResponse } from '@varbyte/nest-worker';
+
+@Controller('ws')
+export class WsController {
+  @WebSocket('/echo')
+  handleEcho() {
+    const [client, server] = new WebSocketPair();
+    server.accept();
+
+    server.addEventListener('message', (event) => {
+      // Echo the message back
+      server.send(`Echo: ${event.data}`);
+    });
+
+    server.addEventListener('close', () => {
+      console.log('Connection closed');
+    });
+
+    return wsUpgradeResponse(client);
+  }
+}
+```
+
+Register the controller in your module as usual:
+
+```ts
+// worker.ts
+import 'reflect-metadata';
+import { Module, createApplication } from '@varbyte/nest-worker';
+import { WsController } from './ws.controller';
+
+@Module({ controllers: [WsController] })
+class AppModule {}
+
+export default createApplication(AppModule).handler;
+```
+
+The WebSocket route uses `GET` by default and the router automatically
+passes through `101` upgrade responses without wrapping them with CORS or
+other response transforms.
+
+### Durable Object with WebSocket Lifecycle
+
+For stateful real-time applications (chat rooms, game sessions, live
+collaboration), use `@DurableObject()` with the lifecycle decorators
+`@OnOpen()`, `@OnMessage()`, and `@OnClose()`.
+
+```ts
+// chat-room.ts
+import {
+  DurableObject,
+  OnOpen,
+  OnMessage,
+  OnClose,
+  handleWebSocketLifecycle,
+} from '@varbyte/nest-worker';
+
+interface Env {
+  CHAT_ROOM: DurableObjectNamespace;
+}
+
+@DurableObject()
+export class ChatRoom {
+  private sessions: WebSocket[] = [];
+  private state: DurableObjectState;
+
+  constructor(state: DurableObjectState, env: Env) {
+    this.state = state;
+  }
+
+  /** Required — Workers calls fetch() on the DO for each upgrade request */
+  async fetch(request: Request): Promise<Response> {
+    return handleWebSocketLifecycle(this, request);
+  }
+
+  @OnOpen()
+  onOpen(connection: WebSocket) {
+    this.sessions.push(connection);
+    connection.send(JSON.stringify({
+      type: 'system',
+      message: `Welcome! ${this.sessions.length} user(s) connected.`,
+    }));
+  }
+
+  @OnMessage()
+  onMessage(connection: WebSocket, message: string | ArrayBuffer) {
+    // Broadcast to all connected sessions
+    for (const session of this.sessions) {
+      if (session !== connection) {
+        session.send(message);
+      }
+    }
+  }
+
+  @OnClose()
+  onClose(connection: WebSocket) {
+    this.sessions = this.sessions.filter((s) => s !== connection);
+  }
+}
+```
+
+Configure the Durable Object in `wrangler.toml`:
+
+```toml
+name = "my-realtime-app"
+main = "worker.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[durable_objects.bindings]]
+name = "CHAT_ROOM"
+class_name = "ChatRoom"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["ChatRoom"]
+```
+
+Register the DO class as a provider in your module and create the HTTP
+endpoint that upgrades connections:
+
+```ts
+// worker.ts
+import 'reflect-metadata';
+import { Module, createApplication, Get, Controller } from '@varbyte/nest-worker';
+import { ChatRoom } from './chat-room';
+import { wsUpgradeResponse } from '@varbyte/nest-worker';
+
+@Controller('chat')
+export class ChatController {
+  @Get()
+  async connect(req: Request, env: { CHAT_ROOM: DurableObjectNamespace }) {
+    const url = new URL(req.url);
+    const doId = env.CHAT_ROOM.idFromName('default-room');
+    const stub = env.CHAT_ROOM.get(doId);
+    return stub.fetch(req);
+  }
+}
+
+@Module({
+  controllers: [ChatController],
+  providers: [ChatRoom],  // Register the DO class
+})
+class AppModule {}
+
+export default createApplication(AppModule).handler;
+```
+
+### Available Decorators
+
+| Decorator | Target | Description |
+|-----------|--------|-------------|
+| `@WebSocket(path?)` | Method | Marks a controller method as a WebSocket upgrade handler (`GET` route with `isWebSocket: true`) |
+| `@DurableObject()` | Class | Marks a class as a Durable Object with state management |
+| `@OnOpen()` | Method | Handles new WebSocket connections inside a `@DurableObject()` class |
+| `@OnMessage()` | Method | Handles incoming messages inside a `@DurableObject()` class |
+| `@OnClose()` | Method | Handles connection close inside a `@DurableObject()` class |
+
+### Utility Functions
+
+| Function | Description |
+|----------|-------------|
+| `wsUpgradeResponse(webSocket)` | Creates a `Response` with `status: 101` and the given `webSocket` |
+| `handleWebSocketLifecycle(instance, request)` | Wires up `@OnOpen`/`@OnMessage`/`@OnClose` handlers inside a DO's `fetch()` |
+| `isWebSocketRoute(route)` | Returns `true` if a `RouteDefinition` is a WebSocket handler |
+| `isDurableObjectClass(target)` | Returns `true` if a class is decorated with `@DurableObject()` |
+| `getWsEvents(target)` | Returns the registered WebSocket lifecycle events for a class |
+
+---
+
+## 12. Queue Producer & Consumer
+
+Integrate Cloudflare Queues for reliable message production and consumption
+at the edge.
+
+### Producer (@QueueProducer)
+
+Use `@QueueProducer()` on a property to send messages to a queue. The
+property becomes a `QueueProducer` with `send()` and `sendBatch()` methods.
+
+```ts
+// notification.service.ts
+import { Injectable, QueueProducer, QueueProducerType } from '@varbyte/nest-worker';
+
+@Injectable()
+export class NotificationService {
+  @QueueProducer()
+  declare queue: QueueProducerType;
+
+  async sendWelcome(user: { id: number; email: string }) {
+    await this.queue.send({
+      type: 'welcome_email',
+      userId: user.id,
+      email: user.email,
+    });
+  }
+
+  async sendBulk(users: Array<{ id: number }>) {
+    await this.queue.sendBatch(
+      users.map((u) => ({ type: 'bulk_notification', userId: u.id })),
+    );
+  }
+}
+```
+
+> **Important:** Always use `declare` when declaring a `@QueueProducer()`
+> property to prevent TypeScript's class field initialisation from shadowing
+> the decorator's getter.
+
+#### Custom Binding Name
+
+By default, `@QueueProducer()` reads from `env.QUEUE`. Pass a different
+binding name to use another queue binding:
+
+```ts
+class EmailProducer {
+  @QueueProducer('EMAIL_QUEUE')
+  declare emailQueue: QueueProducerType;
+
+  async send(email: Email) {
+    await this.emailQueue.send(email);
+  }
+}
+```
+
+### Consumer (@QueueConsumer)
+
+Use `@QueueConsumer(queueName, options?)` on a controller method to consume
+messages from a queue. The method receives the `MessageBatch` when messages
+are delivered.
+
+```ts
+// notification.consumer.ts
+import { Controller, QueueConsumer } from '@varbyte/nest-worker';
+
+@Controller()
+export class NotificationConsumer {
+  @QueueConsumer('send-queue', { batchSize: 10, maxRetries: 3 })
+  async handle(batch: MessageBatch) {
+    for (const msg of batch.messages) {
+      const { type, userId, email } = msg.body;
+
+      switch (type) {
+        case 'welcome_email':
+          console.log(`Sending welcome to ${email} (user #${userId})`);
+          break;
+        case 'bulk_notification':
+          console.log(`Notifying user #${userId}`);
+          break;
+        default:
+          console.warn(`Unknown message type: ${type}`);
+      }
+    }
+  }
+}
+```
+
+### Wiring the Queue Handler
+
+Export the queue handler from your worker entry-point alongside the
+fetch handler:
+
+```ts
+// worker.ts
+import 'reflect-metadata';
+import { Module, createApplication, createQueueHandler } from '@varbyte/nest-worker';
+import { NotificationService } from './notification.service';
+import { NotificationConsumer } from './notification.consumer';
+
+@Module({
+  controllers: [NotificationConsumer],
+  providers: [NotificationService],
+})
+class AppModule {}
+
+const app = createApplication(AppModule);
+
+export default {
+  fetch: app.handler.fetch,
+  queue: createQueueHandler(
+    (ctrlClass) => app.container.resolveController(ctrlClass),
+    app.container.getControllers(),
+  ),
+};
+```
+
+> **Note:** The `app.container` property gives you access to the DI
+> container so `createQueueHandler` can properly resolve controller
+> instances with their dependencies.
+
+### wrangler.toml Configuration
+
+Add your queue bindings in `wrangler.toml`:
+
+```toml
+name = "my-queue-worker"
+main = "worker.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[queues.producers]]
+binding = "QUEUE"
+queue = "send-queue"
+
+[[queues.consumers]]
+queue = "send-queue"
+max_batch_size = 10
+max_retries = 3
+```
+
+### Available Decorators
+
+| Decorator | Target | Description |
+|-----------|--------|-------------|
+| `@QueueProducer(binding?)` | Property | Marks a property as a queue producer with `send()` / `sendBatch()` |
+| `@QueueConsumer(queue, opts?)` | Method | Marks a method as a consumer handler for the named queue |
+
+### Utility Functions
+
+| Function | Description |
+|----------|-------------|
+| `createQueueHandler(resolveController, controllers)` | Builds a `queue` export handler that dispatches to `@QueueConsumer` methods |
+| `getQueueProducerBindings(target)` | Returns registered queue producer bindings |
+| `getQueueConsumers(target)` | Returns registered queue consumer handlers |
+
+---
+
+## 13. Cron Triggers (@Scheduled)
+
+Run code on a schedule using Cloudflare Workers Cron Triggers with the
+`@Scheduled()` decorator.
+
+### Basic Usage
+
+Decorate a controller method with `@Scheduled()` and provide a cron
+expression. The method is automatically called on the defined schedule.
+
+```ts
+// health.controller.ts
+import { Controller, Scheduled } from '@varbyte/nest-worker';
+
+@Controller()
+export class HealthController {
+  @Scheduled({ cron: '0 * * * *' })
+  async healthCheck() {
+    console.log('Health check running (every hour)');
+    // Perform periodic checks
+  }
+}
+```
+
+### Multiple Handlers
+
+Register multiple `@Scheduled()` handlers in the same or different
+controllers — all matching handlers run on every scheduled tick.
+
+```ts
+import { Controller, Scheduled } from '@varbyte/nest-worker';
+
+@Controller()
+export class ScheduledTasksController {
+
+  @Scheduled({ cron: '0 * * * *', name: 'hourly-cleanup' })
+  async hourlyCleanup() {
+    // Runs at the start of every hour
+    await this.cleanupService.removeOldRecords();
+  }
+
+  @Scheduled({ cron: '0 0 * * *', name: 'daily-report' })
+  async dailyReport() {
+    // Runs at midnight every day
+    await this.reportService.generateDaily();
+  }
+
+  @Scheduled({
+    cron: '0 0 * * 0',
+    name: 'weekly-maintenance',
+    timeout: '10 minutes',
+  })
+  async weeklyMaintenance() {
+    // Runs at midnight on Sunday
+    await this.maintenanceService.run();
+  }
+}
+```
+
+### Wiring the Scheduled Handler
+
+Export a `scheduled` handler from your worker entry-point alongside the
+fetch handler:
+
+```ts
+// worker.ts
+import 'reflect-metadata';
+import {
+  Module, createApplication, createScheduledHandler,
+} from '@varbyte/nest-worker';
+import { HealthController } from './health.controller';
+
+@Module({ controllers: [HealthController] })
+class AppModule {}
+
+const app = createApplication(AppModule);
+
+export default {
+  fetch: app.handler.fetch,
+  scheduled: createScheduledHandler(
+    (cls) => app.container.resolveController(cls),
+    app.container.getControllers(),
+  ),
+};
+```
+
+### wrangler.toml Configuration
+
+Add the cron trigger to `wrangler.toml`:
+
+```toml
+name = "my-scheduled-worker"
+main = "worker.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[triggers]]
+crons = ["0 * * * *", "0 0 * * *"]
+```
+
+### Decorator Reference
+
+| Decorator | Target | Description |
+|-----------|--------|-------------|
+| `@Scheduled(options)` | Method | Registers a cron trigger handler. `options.cron` is the cron expression; `name` and `timeout` are optional. |
+
+### Utility Functions
+
+| Function | Description |
+|----------|-------------|
+| `createScheduledHandler(resolveController, controllers)` | Builds a `scheduled` export handler that dispatches to all `@Scheduled()` methods |
+| `getScheduledHandlers(target)` | Returns registered scheduled handlers for a class |
+
+---
+
+## 14. Static Assets (@ServeStatic)
+
+Serve static files (SPA, images, CSS) directly from your Cloudflare Worker
+using Workers Sites or any KV/FILES namespace binding.
+
+### Middleware (App-Level)
+
+Use `serveStaticAssets()` as a global middleware to serve files from a
+Workers Sites `bucket`:
+
+```ts
+// worker.ts
+import 'reflect-metadata';
+import { Module, createApplication, serveStaticAssets } from '@varbyte/nest-worker';
+
+@Module({})
+class AppModule {}
+
+const app = createApplication(AppModule);
+
+app.use(serveStaticAssets({
+  root: '/assets',
+  index: 'index.html',
+  contentBinding: '__STATIC_CONTENT',
+}));
+
+export default app.handler;
+```
+
+### Decorator (@ServeStatic)
+
+Apply `@ServeStatic()` to a controller method to serve files from a specific
+root. The method body runs as a fallback when no matching file is found:
+
+```ts
+// assets.controller.ts
+import { Controller, ServeStatic } from '@varbyte/nest-worker';
+
+@Controller()
+export class AssetsController {
+  @ServeStatic({ root: '/public', index: 'index.html' })
+  serve() {
+    // Fallback when file not found
+    return new Response('Not Found', { status: 404 });
+  }
+}
+```
+
+### SPA Fallback
+
+When a requested file is not found, the middleware automatically serves the
+`index.html` file (SPA fallback). Disable this with `index: false`:
+
+```ts
+app.use(serveStaticAssets({
+  root: '/',
+  index: false,  // no SPA fallback
+}));
+```
+
+### wrangler.toml Configuration
+
+Configure Workers Sites in `wrangler.toml`:
+
+```toml
+name = "my-static-worker"
+main = "worker.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[site]
+bucket = "./public"
+entry-point = "workers-site"
+```
+
+Files in the `public/` directory are uploaded and served via
+`env.__STATIC_CONTENT` at runtime.
+
+### Decorator Reference
+
+| Decorator | Target | Description |
+|-----------|--------|-------------|
+| `@ServeStatic(options?)` | Method | Registers a GET route that serves static files from a Workers Sites binding |
+
+### Middleware Reference
+
+| Function | Description |
+|----------|-------------|
+| `serveStaticAssets(options?)` | Middleware that serves static files from a Workers Sites binding (supports `root`, `index`, `contentBinding`) |
+| `getServeStaticEntries(target)` | Returns registered `@ServeStatic()` entries for a class |
 
 ---
 
