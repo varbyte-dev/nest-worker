@@ -67,6 +67,7 @@ Full command reference:
 11. [WebSocket & Durable Objects](#11-websocket--durable-objects)
 12. [Queue Producer & Consumer](#12-queue-producer--consumer)
 13. [Cron Triggers (@Scheduled)](#13-cron-triggers-scheduled)
+14. [Static Assets (@ServeStatic)](#14-static-assets-servestatic)
 
 ---
 
@@ -1680,6 +1681,99 @@ crons = ["0 * * * *", "0 0 * * *"]
 |----------|-------------|
 | `createScheduledHandler(resolveController, controllers)` | Builds a `scheduled` export handler that dispatches to all `@Scheduled()` methods |
 | `getScheduledHandlers(target)` | Returns registered scheduled handlers for a class |
+
+---
+
+## 14. Static Assets (@ServeStatic)
+
+Serve static files (SPA, images, CSS) directly from your Cloudflare Worker
+using Workers Sites or any KV/FILES namespace binding.
+
+### Middleware (App-Level)
+
+Use `serveStaticAssets()` as a global middleware to serve files from a
+Workers Sites `bucket`:
+
+```ts
+// worker.ts
+import 'reflect-metadata';
+import { Module, createApplication, serveStaticAssets } from '@varbyte/nest-worker';
+
+@Module({})
+class AppModule {}
+
+const app = createApplication(AppModule);
+
+app.use(serveStaticAssets({
+  root: '/assets',
+  index: 'index.html',
+  contentBinding: '__STATIC_CONTENT',
+}));
+
+export default app.handler;
+```
+
+### Decorator (@ServeStatic)
+
+Apply `@ServeStatic()` to a controller method to serve files from a specific
+root. The method body runs as a fallback when no matching file is found:
+
+```ts
+// assets.controller.ts
+import { Controller, ServeStatic } from '@varbyte/nest-worker';
+
+@Controller()
+export class AssetsController {
+  @ServeStatic({ root: '/public', index: 'index.html' })
+  serve() {
+    // Fallback when file not found
+    return new Response('Not Found', { status: 404 });
+  }
+}
+```
+
+### SPA Fallback
+
+When a requested file is not found, the middleware automatically serves the
+`index.html` file (SPA fallback). Disable this with `index: false`:
+
+```ts
+app.use(serveStaticAssets({
+  root: '/',
+  index: false,  // no SPA fallback
+}));
+```
+
+### wrangler.toml Configuration
+
+Configure Workers Sites in `wrangler.toml`:
+
+```toml
+name = "my-static-worker"
+main = "worker.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[site]
+bucket = "./public"
+entry-point = "workers-site"
+```
+
+Files in the `public/` directory are uploaded and served via
+`env.__STATIC_CONTENT` at runtime.
+
+### Decorator Reference
+
+| Decorator | Target | Description |
+|-----------|--------|-------------|
+| `@ServeStatic(options?)` | Method | Registers a GET route that serves static files from a Workers Sites binding |
+
+### Middleware Reference
+
+| Function | Description |
+|----------|-------------|
+| `serveStaticAssets(options?)` | Middleware that serves static files from a Workers Sites binding (supports `root`, `index`, `contentBinding`) |
+| `getServeStaticEntries(target)` | Returns registered `@ServeStatic()` entries for a class |
 
 ---
 

@@ -58,6 +58,8 @@ import {
   handleWebSocketLifecycle,
   Scheduled,
   createScheduledHandler,
+  ServeStatic,
+  serveStaticAssets,
 } from "../src/index";
 import type {
   BearerAuthOptions,
@@ -147,6 +149,8 @@ describe("public API contract", () => {
     expect(handleWebSocketLifecycle).toEqual(expect.any(Function));
     expect(Scheduled).toEqual(expect.any(Function));
     expect(createScheduledHandler).toEqual(expect.any(Function));
+    expect(ServeStatic).toEqual(expect.any(Function));
+    expect(serveStaticAssets).toEqual(expect.any(Function));
   });
 
   it("should keep public type exports available to consumers", () => {

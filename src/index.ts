@@ -86,6 +86,14 @@ export {
 } from "./extras/cron";
 export type { ScheduledOptions } from "./extras/cron";
 
+// Static Assets
+export {
+  ServeStatic,
+  serveStaticAssets,
+  getServeStaticEntries,
+} from "./extras/static-assets";
+export type { ServeStaticOptions } from "./extras/static-assets";
+
 // Validation helpers
 export { createValidationPipe, validateBody } from "./extras/validation";
 export type {
