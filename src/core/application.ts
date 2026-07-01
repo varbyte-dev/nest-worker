@@ -11,19 +11,28 @@ export interface WorkerEnv {
 
 export class NestWorkerApplication {
   private router: Router;
-  private container: Container;
+  private _container: Container;
   private globalMiddlewares: MiddlewareFn[] = [];
   private globalErrorFilters: ErrorFilterFn[] = [];
 
   constructor(private rootModule: any) {
-    this.container = new Container();
-    this.router = new Router(this.container, this.globalErrorFilters);
+    this._container = new Container();
+    this.router = new Router(this._container, this.globalErrorFilters);
     this.bootstrap();
   }
 
+  /**
+   * DI Container reference.
+   * Exposed so utilities like `createQueueHandler` and `createScheduledHandler`
+   * can resolve controller instances with their dependencies.
+   */
+  get container(): Container {
+    return this._container;
+  }
+
   private bootstrap() {
-    this.container.register(this.rootModule);
-    const controllers = this.container.getControllers();
+    this._container.register(this.rootModule);
+    const controllers = this._container.getControllers();
     for (const ctrl of controllers) {
       this.router.registerController(ctrl);
     }
@@ -80,7 +89,7 @@ export class NestWorkerApplication {
    * ```
    */
   useSwagger(options: SwaggerOptions = {}): this {
-    const controllers = this.container.getControllers();
+    const controllers = this._container.getControllers();
     const spec = buildOpenApiSpec(controllers, options);
     const middleware = createSwaggerMiddleware(spec, options);
     // Run before global middlewares so it short-circuits quickly
