@@ -1,18 +1,19 @@
 {
-  "name": "@nest-worker/auth",
+  "name": "@varbyte/nest-worker-auth"
   "version": "0.1.0",
   "description": "Authentication middleware for @varbyte/nest-worker — JWT, Cloudflare Access, and API Key strategies",
   "keywords": [
-    "cloudflare",
-    "workers",
-    "auth",
-    "jwt",
-    "authentication",
-    "middleware",
-    "cf-access",
-    "api-key",
-    "nest-worker"
-  ],
+      "cloudflare",
+      "workers",
+      "auth",
+      "jwt",
+      "authentication",
+      "middleware",
+      "cf-access",
+      "api-key",
+      "nest-worker",
+      "varbyte"
+    ],
   "license": "MIT",
   "author": "Daniel Vargas",
   "repository": {
