@@ -1,4 +1,4 @@
-# @nest-worker/auth
+# @varbyte/nest-worker-auth
 
 **Authentication middleware for `@varbyte/nest-worker`** — Validate JWT, Cloudflare Access, and API Key credentials with zero external dependencies.
 
@@ -17,7 +17,7 @@ Powered by the [Web Crypto API](https://developer.mozilla.org/en-US/docs/Web/API
 ## Installation
 
 ```bash
-pnpm add @nest-worker/auth
+pnpm add @varbyte/nest-worker-auth
 ```
 
 ## Quick Start
@@ -25,7 +25,7 @@ pnpm add @nest-worker/auth
 ### 1. JWT Authentication
 
 ```ts
-import { AuthGuard, getAuthUser } from '@nest-worker/auth';
+import { AuthGuard, getAuthUser } from '@varbyte/nest-worker-auth';
 import { Controller, Get, Req, UseMiddleware } from '@varbyte/nest-worker';
 
 @Controller()
@@ -42,7 +42,7 @@ class ProfileController {
 ### 2. Cloudflare Access
 
 ```ts
-import { AuthGuard } from '@nest-worker/auth';
+import { AuthGuard } from '@varbyte/nest-worker-auth';
 
 @Get('/admin')
 @UseMiddleware(AuthGuard.cfAccess({
@@ -58,7 +58,7 @@ getAdmin(@Req() req: Request) {
 ### 3. API Key
 
 ```ts
-import { AuthGuard } from '@nest-worker/auth';
+import { AuthGuard } from '@varbyte/nest-worker-auth';
 
 // Static key
 @UseMiddleware(AuthGuard.apiKey({ key: 'sk-secret-123' }))
@@ -99,7 +99,7 @@ import { AuthGuard } from '@nest-worker/auth';
 
 ```ts
 import { createApplication } from '@varbyte/nest-worker';
-import { AuthGuard } from '@nest-worker/auth';
+import { AuthGuard } from '@varbyte/nest-worker-auth';
 
 const app = createApplication(AppModule);
 

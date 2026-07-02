@@ -1,16 +1,17 @@
 {
-  "name": "@nest-worker/cache",
-  "version": "0.1.0",
+  "name": "@varbyte/nest-worker-cache",
+    "version": "0.1.0",
   "description": "Caching middleware for @varbyte/nest-worker — Cloudflare Cache API and KV strategies",
   "keywords": [
-    "cloudflare",
-    "workers",
-    "cache",
-    "middleware",
-    "kv",
-    "cache-api",
-    "nest-worker"
-  ],
+      "cloudflare",
+      "workers",
+      "cache",
+      "middleware",
+      "kv",
+      "cache-api",
+      "nest-worker",
+      "varbyte"
+    ],
   "license": "MIT",
   "author": "Daniel Vargas",
   "repository": {
