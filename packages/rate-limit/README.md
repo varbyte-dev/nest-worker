@@ -1,4 +1,4 @@
-# @nest-worker/rate-limit
+# @varbyte/nest-worker-rate-limit
 
 **Rate limiting middleware for `@varbyte/nest-worker`** — Protect your APIs with configurable rate limits using in-memory or Cloudflare KV storage.
 
@@ -15,7 +15,7 @@
 ## Installation
 
 ```bash
-pnpm add @nest-worker/rate-limit
+pnpm add @varbyte/nest-worker-rate-limit
 ```
 
 ## Quick Start
@@ -23,7 +23,7 @@ pnpm add @nest-worker/rate-limit
 ### 1. In-memory (development)
 
 ```ts
-import { RateLimitGuard } from '@nest-worker/rate-limit';
+import { RateLimitGuard } from '@varbyte/nest-worker-rate-limit';
 import { Controller, Get, UseMiddleware } from '@varbyte/nest-worker';
 
 @Controller()
@@ -43,7 +43,7 @@ class ApiController {
 
 ```ts
 import { createApplication } from '@varbyte/nest-worker';
-import { RateLimitGuard } from '@nest-worker/rate-limit';
+import { RateLimitGuard } from '@varbyte/nest-worker-rate-limit';
 
 const app = createApplication(AppModule);
 
@@ -113,7 +113,7 @@ export default app.handler;
 Creates a standalone in-memory strategy. Useful for testing or custom usage.
 
 ```ts
-import { memoryStrategy } from '@nest-worker/rate-limit';
+import { memoryStrategy } from '@varbyte/nest-worker-rate-limit';
 
 const strategy = memoryStrategy();
 const result = await strategy.increment('user:123', 60000, 100);
@@ -125,7 +125,7 @@ const result = await strategy.increment('user:123', 60000, 100);
 Creates a standalone KV strategy. Requires a `KVNamespace` binding.
 
 ```ts
-import { kvStrategy } from '@nest-worker/rate-limit';
+import { kvStrategy } from '@varbyte/nest-worker-rate-limit';
 
 const strategy = kvStrategy(env.RATE_LIMIT);
 const result = await strategy.increment('user:123', 60000, 100);

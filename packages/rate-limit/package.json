@@ -1,16 +1,16 @@
 {
-  "name": "@nest-worker/rate-limit",
+  "name": "@varbyte/nest-worker-rate-limit"
   "version": "0.1.0",
   "description": "Rate limiting middleware for @varbyte/nest-worker — in-memory and Cloudflare KV strategies",
   "keywords": [
     "cloudflare",
     "workers",
     "rate-limit",
-    "rate-limiting",
-    "kv",
+    "rate-limit",
     "middleware",
     "throttle",
-    "nest-worker"
+    "nest-worker",
+    "varbyte"
   ],
   "license": "MIT",
   "author": "Daniel Vargas",
