@@ -1,6 +1,6 @@
 {
-  "name": "@varbyte/nest-worker-rate-limit"
-  "version": "0.1.0",
+  "name": "@varbyte/nest-worker-rate-limit",
+    "version": "0.1.0",
   "description": "Rate limiting middleware for @varbyte/nest-worker — in-memory and Cloudflare KV strategies",
   "keywords": [
     "cloudflare",
