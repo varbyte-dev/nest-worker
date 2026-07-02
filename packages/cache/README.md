@@ -1,8 +1,8 @@
-# @nest-worker/cache 🗄️
+# @varbyte/nest-worker-cache 🗄️
 
 > Caching middleware for [@varbyte/nest-worker](https://github.com/varbyte-dev/nest-worker) — Cloudflare Cache API and KV strategies.
 
-[![npm version](https://img.shields.io/npm/v/@nest-worker/cache)](https://www.npmjs.com/package/@nest-worker/cache)
+[![npm version](https://img.shields.io/npm/v/@varbyte/nest-worker-cache)](https://www.npmjs.com/package/@varbyte/nest-worker-cache)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Features
@@ -17,7 +17,7 @@
 ## Installation
 
 ```bash
-npm install @nest-worker/cache
+npm install @varbyte/nest-worker-cache
 ```
 
 ## Quick Start
@@ -25,7 +25,7 @@ npm install @nest-worker/cache
 ### Global middleware (all GET responses)
 
 ```ts
-import { cacheMiddleware } from '@nest-worker/cache';
+import { cacheMiddleware } from '@varbyte/nest-worker-cache';
 import { createApplication } from '@varbyte/nest-worker';
 
 const app = createApplication(AppModule);
@@ -39,7 +39,7 @@ export default app.handler;
 ### Per-route with custom key and KV backend
 
 ```ts
-import { cacheMiddleware } from '@nest-worker/cache';
+import { cacheMiddleware } from '@varbyte/nest-worker-cache';
 import { Controller, Get, UseMiddleware } from '@varbyte/nest-worker';
 
 @Controller('products')
@@ -61,7 +61,7 @@ export class ProductsController {
 ### Using `withCache` for precise control
 
 ```ts
-import { withCache } from '@nest-worker/cache';
+import { withCache } from '@varbyte/nest-worker-cache';
 
 export default {
   async fetch(req, env, ctx) {
@@ -75,7 +75,7 @@ export default {
 ### Cache invalidation
 
 ```ts
-import { invalidateCache } from '@nest-worker/cache';
+import { invalidateCache } from '@varbyte/nest-worker-cache';
 
 // Invalidate a specific URL in the cache
 await invalidateCache(env, '/products/123', 'kv', 'PRODUCTS_CACHE');
