@@ -1,0 +1,53 @@
+{
+  "name": "@nest-worker/rate-limit",
+  "version": "0.1.0",
+  "description": "Rate limiting middleware for @varbyte/nest-worker — in-memory and Cloudflare KV strategies",
+  "keywords": [
+    "cloudflare",
+    "workers",
+    "rate-limit",
+    "rate-limiting",
+    "kv",
+    "middleware",
+    "throttle",
+    "nest-worker"
+  ],
+  "license": "MIT",
+  "author": "Daniel Vargas",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/varbyte-dev/nest-worker"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@varbyte/nest-worker": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250201.0",
+    "typescript": "^5.5.0",
+    "vitest": "^4.1.0"
+  },
+  "peerDependencies": {
+    "@varbyte/nest-worker": ">=0.3.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
