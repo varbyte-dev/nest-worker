@@ -45,7 +45,9 @@ describe("CLI generated project", () => {
     expect(existsSync(resolve(projectRoot, "wrangler.toml"))).toBe(true);
     expect(existsSync(resolve(projectRoot, "src/worker.ts"))).toBe(true);
     expect(
-      existsSync(resolve(projectRoot, "src/common/filters/app-error.filter.ts")),
+      existsSync(
+        resolve(projectRoot, "src/common/filters/app-error.filter.ts"),
+      ),
     ).toBe(true);
 
     await pointGeneratedProjectAtLocalWorkspace(projectRoot);
@@ -140,6 +142,24 @@ describe("CLI generated project", () => {
       "local-secret",
       "--force",
     ]);
+    // Also test env with JSON value
+    await runGenerateCommand(projectRoot, [
+      "env",
+      "APP_CONFIG",
+      "--value",
+      '{"region":"us-east","debug":true}',
+      "--type",
+      "json",
+      "--force",
+    ]);
+    // Test websocket generator
+    await runGenerateCommand(projectRoot, ["websocket", "chat"]);
+    // Test queue generator
+    await runGenerateCommand(projectRoot, ["queue", "notifications"]);
+    // Test scheduled generator
+    await runGenerateCommand(projectRoot, ["scheduled", "health"]);
+    // Test static-assets generator
+    await runGenerateCommand(projectRoot, ["static-assets"]);
 
     const expectedFiles = [
       "src/modules/billing/billing.module.ts",
@@ -156,6 +176,12 @@ describe("CLI generated project", () => {
       "src/config/providers/settings.provider.ts",
       "src/config/providers/feature-flags.provider.ts",
       "src/config/providers/cache.provider.ts",
+      "src/modules/chat/chat.websocket.ts",
+      "src/modules/notifications/notifications.producer.ts",
+      "src/modules/notifications/notifications.consumer.ts",
+      "src/modules/health/health.scheduled.ts",
+      // Note: swagger, scheduled, static-assets are generated in common/config or common/controllers dirs
+      "src/common/controllers/static-assets.controller.ts",
     ];
 
     for (const file of expectedFiles) {
@@ -182,11 +208,17 @@ describe("CLI generated project", () => {
       "utf-8",
     );
     const exception = await readFile(
-      resolve(projectRoot, "src/common/exceptions/payment-required.exception.ts"),
+      resolve(
+        projectRoot,
+        "src/common/exceptions/payment-required.exception.ts",
+      ),
       "utf-8",
     );
 
     expect(wrangler).toContain('API_SECRET = "local-secret"');
+    expect(wrangler).toContain("APP_CONFIG =");
+    // JSON values get TOML-escaped (inner quotes become \")
+    expect(wrangler).toContain("us-east");
     expect(classProvider).toContain("useClass: CacheProviderClass");
     expect(exception).toContain("super(message, 402, details)");
 
@@ -249,11 +281,9 @@ async function runCliCommand(
 
   const previousCwd = process.cwd();
   const output: string[] = [];
-  const consoleLog = vi
-    .spyOn(console, "log")
-    .mockImplementation((...args) => {
-      output.push(args.map(String).join(" "));
-    });
+  const consoleLog = vi.spyOn(console, "log").mockImplementation((...args) => {
+    output.push(args.map(String).join(" "));
+  });
   const consoleError = vi
     .spyOn(console, "error")
     .mockImplementation((...args) => {

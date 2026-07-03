@@ -32,6 +32,24 @@ import {
 
 // ─── Helpers ───────────────────────────────────────────────────────────
 
+/** Escape a value for safe inclusion in a TOML basic string (double-quoted). */
+function tomlEscape(val: string): string {
+  return val
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t");
+}
+
+/** Format a TOML value: JSON uses double-quoted basic string, text/secret also uses double-quoted. */
+function tomlFormat(val: string, type: string): string {
+  const escaped = tomlEscape(val);
+  // Always use double-quoted basic strings (safe for all content including quotes inside).
+  // For JSON values, the user passes a JSON string like {"key":"val"} which needs inner quotes escaped.
+  return `"${escaped}"`;
+}
+
 function projectGuard(): string {
   const root = findProjectRoot();
   const project = detectProject(root);
@@ -1546,11 +1564,7 @@ function createEnvCommand(): Command {
   );
   cmd.argument("<var>", "Environment variable name (e.g. API_SECRET)");
   cmd.option("-v, --value <value>", "Default / placeholder value");
-  cmd.option(
-    "-t, --type <type>",
-    "Binding type: secret | text | json",
-    "secret",
-  );
+  cmd.option("-t, --type <type>", "Binding type: secret | text | json", "text");
   cmd.option("-f, --force", "Overwrite existing variable in wrangler.toml");
   cmd.action(
     (
@@ -1567,11 +1581,8 @@ function createEnvCommand(): Command {
         console.log(
           pc.dim(`\n  Add the following to your \`wrangler.toml\`:\n`),
         );
-        if (type === "secret") {
-          console.log(`  [vars]\n  ${varName} = "${value}"\n`);
-        } else {
-          console.log(`  [vars]\n  ${varName} = ${value}\n`);
-        }
+        const hintVal = tomlFormat(value, type);
+        console.log(`  [vars]\n  ${varName} = ${hintVal}\n`);
         return;
       }
 
@@ -1589,7 +1600,7 @@ function createEnvCommand(): Command {
           return;
         }
         // Replace existing line
-        const tomlVal = type === "json" ? `'${value}'` : `"${value}"`;
+        const tomlVal = tomlFormat(value, type);
         content = content.replace(varRegex, `${varName} = ${tomlVal}`);
         writeFileSync(wranglerPath, content, "utf-8");
         console.log(
@@ -1599,17 +1610,16 @@ function createEnvCommand(): Command {
       }
 
       // Ensure [vars] section exists
+      const tomlVal2 = tomlFormat(value, type);
       if (/^\[vars\]/m.test(content)) {
         // Append after the [vars] section
-        const tomlVal2 = type === "json" ? `'${value}'` : `"${value}"`;
         content = content.replace(
           /^\[vars\]\s*\n/m,
           `[vars]\n${varName} = ${tomlVal2}\n`,
         );
       } else {
         // Add [vars] section at the end
-        const tomlVal3 = type === "json" ? `'${value}'` : `"${value}"`;
-        content += `\n[vars]\n${varName} = ${tomlVal3}\n`;
+        content += `\n[vars]\n${varName} = ${tomlVal2}\n`;
       }
 
       writeFileSync(wranglerPath, content, "utf-8");
