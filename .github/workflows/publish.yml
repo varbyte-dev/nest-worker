@@ -118,17 +118,6 @@ jobs:
       - name: Build package
         run: cd ${{ matrix.dir }} && pnpm run build
 
-      - name: Ensure package exists in registry
-        run: |
-          PACKAGE_NAME="${{ matrix.name }}"
-          curl -s -X PUT \
-            -H "Authorization: Bearer $NPM_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d "{\"name\":\"${PACKAGE_NAME}\",\"access\":\"public\"}" \
-            "https://registry.npmjs.org/$(echo ${PACKAGE_NAME} | sed 's|/|%2F|g')" || true
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-
       - name: Publish to npm
         run: cd ${{ matrix.dir }} && pnpm publish --access public --no-git-checks
         env:
