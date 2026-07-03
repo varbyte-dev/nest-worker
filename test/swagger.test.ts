@@ -7,6 +7,8 @@ import {
   ApiBody,
   ApiResponse,
   ApiTags,
+  ApiSecurity,
+  SecuritySchemes,
   buildOpenApiSpec,
 } from "../src/index";
 
@@ -499,5 +501,202 @@ describe("app.useSwagger() integration", () => {
     expect(goodAuth.status).toBe(200);
     const spec = await goodAuth.json();
     expect(spec.info.title).toBe("Protected");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+//  Security Schemes & @ApiSecurity
+// ═══════════════════════════════════════════════════════════════════
+
+describe("@ApiSecurity and securitySchemes", () => {
+  it("should add securitySchemes to components when provided in options", () => {
+    @ApiTags("Test")
+    class SecCtrl {
+      static __controller__ = true;
+    }
+    Reflect.defineMetadata("__controller__", "", SecCtrl);
+    Reflect.defineMetadata("__routes__", [], SecCtrl);
+
+    const spec = buildOpenApiSpec([SecCtrl], {
+      securitySchemes: {
+        bearerAuth: SecuritySchemes.bearerJwt(),
+        apiKey: SecuritySchemes.apiKey(),
+      },
+    });
+
+    expect(spec.components?.securitySchemes).toBeDefined();
+    expect(spec.components!.securitySchemes!.bearerAuth).toMatchObject({
+      type: "http",
+      scheme: "bearer",
+      bearerFormat: "JWT",
+    });
+    expect(spec.components!.securitySchemes!.apiKey).toMatchObject({
+      type: "apiKey",
+      name: "X-API-Key",
+      in: "header",
+    });
+  });
+
+  it("should add security to operation when @ApiSecurity is on method", () => {
+    @ApiTags("Protected")
+    class ProtectedCtrl {
+      list() {}
+      me() {}
+    }
+    Reflect.defineMetadata("__controller__", "items", ProtectedCtrl);
+    Reflect.defineMetadata(
+      "__routes__",
+      [
+        { method: "GET", path: "", handlerName: "list" },
+        { method: "GET", path: "me", handlerName: "me" },
+      ],
+      ProtectedCtrl,
+    );
+
+    // Apply @ApiSecurity only on 'me'
+    ApiSecurity("bearerAuth")(
+      ProtectedCtrl.prototype,
+      "me",
+      Object.getOwnPropertyDescriptor(ProtectedCtrl.prototype, "me")!,
+    );
+
+    const spec = buildOpenApiSpec([ProtectedCtrl], {
+      securitySchemes: { bearerAuth: SecuritySchemes.bearerJwt() },
+    });
+
+    // 'list' should have no security
+    expect(spec.paths["/items"]["get"].security).toBeUndefined();
+    // 'me' should have bearerAuth security
+    expect(spec.paths["/items/me"]["get"].security).toEqual([
+      { bearerAuth: [] },
+    ]);
+  });
+
+  it("should apply controller-level @ApiSecurity to all routes", () => {
+    @ApiSecurity("bearerAuth")
+    @ApiTags("Admin")
+    class AdminCtrl {
+      list() {}
+      get() {}
+    }
+    Reflect.defineMetadata("__controller__", "admin", AdminCtrl);
+    Reflect.defineMetadata(
+      "__routes__",
+      [
+        { method: "GET", path: "", handlerName: "list" },
+        { method: "GET", path: ":id", handlerName: "get" },
+      ],
+      AdminCtrl,
+    );
+
+    const spec = buildOpenApiSpec([AdminCtrl], {
+      securitySchemes: { bearerAuth: SecuritySchemes.bearerJwt() },
+    });
+
+    // Both routes inherit the controller-level security
+    expect(spec.paths["/admin"]["get"].security).toEqual([{ bearerAuth: [] }]);
+    expect(spec.paths["/admin/{id}"]["get"].security).toEqual([
+      { bearerAuth: [] },
+    ]);
+  });
+
+  it("should allow route-level @ApiSecurity to override controller-level", () => {
+    class MixedCtrl {
+      publicRoute() {}
+      privateRoute() {}
+    }
+    // Controller-level: bearerAuth on all
+    ApiSecurity("bearerAuth")(MixedCtrl);
+    // Route-level: apiKey overrides bearerAuth for privateRoute
+    ApiSecurity("apiKey")(
+      MixedCtrl.prototype,
+      "privateRoute",
+      Object.getOwnPropertyDescriptor(MixedCtrl.prototype, "privateRoute")!,
+    );
+
+    Reflect.defineMetadata("__controller__", "mixed", MixedCtrl);
+    Reflect.defineMetadata(
+      "__routes__",
+      [
+        { method: "GET", path: "public", handlerName: "publicRoute" },
+        { method: "GET", path: "private", handlerName: "privateRoute" },
+      ],
+      MixedCtrl,
+    );
+
+    const spec = buildOpenApiSpec([MixedCtrl], {
+      securitySchemes: {
+        bearerAuth: SecuritySchemes.bearerJwt(),
+        apiKey: SecuritySchemes.apiKey(),
+      },
+    });
+
+    // publicRoute gets controller-level bearerAuth
+    expect(spec.paths["/mixed/public"]["get"].security).toEqual([
+      { bearerAuth: [] },
+    ]);
+    // privateRoute is overridden by route-level apiKey
+    expect(spec.paths["/mixed/private"]["get"].security).toEqual([
+      { apiKey: [] },
+    ]);
+  });
+
+  it("SecuritySchemes.bearerJwt should create correct scheme object", () => {
+    const scheme = SecuritySchemes.bearerJwt();
+    expect(scheme.type).toBe("http");
+    expect(scheme.scheme).toBe("bearer");
+    expect(scheme.bearerFormat).toBe("JWT");
+    expect(scheme.description).toBeTruthy();
+  });
+
+  it("SecuritySchemes.apiKey should create correct scheme object", () => {
+    const scheme = SecuritySchemes.apiKey({ name: "X-My-Key" });
+    expect(scheme.type).toBe("apiKey");
+    expect(scheme.name).toBe("X-My-Key");
+    expect(scheme.in).toBe("header");
+  });
+
+  it("SecuritySchemes.basicAuth should create correct scheme object", () => {
+    const scheme = SecuritySchemes.basicAuth();
+    expect(scheme.type).toBe("http");
+    expect(scheme.scheme).toBe("basic");
+  });
+
+  it("should not add securitySchemes when not provided in options", () => {
+    class NoSecCtrl {}
+    Reflect.defineMetadata("__controller__", "", NoSecCtrl);
+    Reflect.defineMetadata("__routes__", [], NoSecCtrl);
+
+    const spec = buildOpenApiSpec([NoSecCtrl], { title: "No sec" });
+    expect(spec.components?.securitySchemes).toBeUndefined();
+  });
+
+  it("Swagger UI HTML should have persistAuthorization enabled", async () => {
+    const { createApplication, Module, Get, Controller } =
+      await import("../src/index");
+
+    @Controller("ping")
+    class PingCtrl {
+      @Get()
+      ping() {
+        return "pong";
+      }
+    }
+
+    @Module({ controllers: [PingCtrl] })
+    class PingMod {}
+
+    const app = createApplication(PingMod);
+    app.useSwagger({
+      securitySchemes: { bearerAuth: SecuritySchemes.bearerJwt() },
+    });
+
+    const res = await app.handler.fetch(
+      new Request("https://example.com/docs"),
+      {},
+      {} as ExecutionContext,
+    );
+    const html = await res.text();
+    expect(html).toContain("persistAuthorization: true");
   });
 });

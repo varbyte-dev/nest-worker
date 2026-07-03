@@ -11,12 +11,7 @@ const HTTP_CODE_KEY = "__http_code__";
 // ─── Type helpers ────────────────────────────────────────────────
 
 type SwaggerType =
-  | "string"
-  | "number"
-  | "integer"
-  | "boolean"
-  | "object"
-  | "array";
+  "string" | "number" | "integer" | "boolean" | "object" | "array";
 
 function designTypeToSwagger(designType?: any): {
   type: SwaggerType;
@@ -223,9 +218,138 @@ export function ApiTags(...tags: string[]): ClassDecorator {
   };
 }
 
+/**
+ * Marks a controller or route as requiring a specific security scheme.
+ * Adds a `security` requirement to the OpenAPI operation, which causes
+ * Swagger UI to show the lock icon (🔒) on the endpoint.
+ *
+ * Apply at **controller level** to protect all routes, or at
+ * **method level** to protect individual routes.
+ *
+ * The scheme name must match a key in `SwaggerOptions.securitySchemes`.
+ *
+ * @param scheme - Security scheme name (e.g. `'bearerAuth'`, `'apiKey'`)
+ * @param scopes - Optional list of OAuth2 scopes (leave empty for JWT/API Key)
+ *
+ * @example
+ * ```ts
+ * // Protect entire controller
+ * @ApiSecurity('bearerAuth')
+ * @ApiTags('Profile')
+ * @Controller('profile')
+ * class ProfileController {
+ *   @Get()
+ *   getProfile(@Req() req: Request) {
+ *     return getAuthUser(req);
+ *   }
+ * }
+ *
+ * // Protect a single route
+ * @Get('admin')
+ * @ApiSecurity('bearerAuth')
+ * getAdminData() { ... }
+ * ```
+ */
+export function ApiSecurity(
+  scheme: string,
+  scopes: string[] = [],
+): MethodDecorator & ClassDecorator {
+  const security = [{ [scheme]: scopes }];
+  return function (
+    target: any,
+    propertyKey?: string | symbol,
+    _descriptor?: PropertyDescriptor,
+  ) {
+    if (propertyKey !== undefined) {
+      // Method decorator
+      Reflect.defineMetadata(
+        `${SWAGGER_PROP_PREFIX}:security:${String(propertyKey)}`,
+        security,
+        target.constructor,
+      );
+    } else {
+      // Class decorator
+      Reflect.defineMetadata(
+        `${SWAGGER_PROP_PREFIX}:security`,
+        security,
+        target,
+      );
+    }
+  } as MethodDecorator & ClassDecorator;
+}
+
 // ═══════════════════════════════════════════════════════════════════
 //  OPENAPI SPEC BUILDER
 // ═══════════════════════════════════════════════════════════════════
+
+/**
+ * An OpenAPI 3.0 Security Scheme Object.
+ *
+ * Common presets are available via `SecuritySchemes.*` helpers.
+ *
+ * @example
+ * ```ts
+ * app.useSwagger({
+ *   securitySchemes: {
+ *     bearerAuth: SecuritySchemes.bearerJwt(),
+ *     apiKey:     SecuritySchemes.apiKey(),
+ *   },
+ * });
+ * ```
+ */
+export interface SecuritySchemeObject {
+  /** Scheme type */
+  type: "http" | "apiKey" | "oauth2" | "openIdConnect";
+  /** For `type: 'http'`. Typically `'bearer'` or `'basic'`. */
+  scheme?: string;
+  /** For `type: 'http'` + `scheme: 'bearer'`. Hint shown in Swagger UI (e.g. `'JWT'`). */
+  bearerFormat?: string;
+  /** For `type: 'apiKey'`. Header/query/cookie name. */
+  name?: string;
+  /** For `type: 'apiKey'`. Where to send the key. */
+  in?: "header" | "query" | "cookie";
+  /** Human-readable description shown in Swagger UI. */
+  description?: string;
+}
+
+/**
+ * Convenience factory functions for common security schemes.
+ *
+ * @example
+ * ```ts
+ * securitySchemes: {
+ *   bearerAuth: SecuritySchemes.bearerJwt(),
+ *   apiKey:     SecuritySchemes.apiKey({ name: 'X-API-Key' }),
+ * }
+ * ```
+ */
+export const SecuritySchemes = {
+  /** HTTP Bearer JWT — the most common scheme for REST APIs. */
+  bearerJwt(
+    description = "JWT Bearer token. Obtain one via the login endpoint.",
+  ): SecuritySchemeObject {
+    return { type: "http", scheme: "bearer", bearerFormat: "JWT", description };
+  },
+  /** API Key passed in a request header. */
+  apiKey(options?: {
+    name?: string;
+    description?: string;
+  }): SecuritySchemeObject {
+    return {
+      type: "apiKey",
+      name: options?.name ?? "X-API-Key",
+      in: "header",
+      description:
+        options?.description ?? "API key sent in the X-API-Key header.",
+    };
+  },
+  /** HTTP Basic Auth. */
+  basicAuth(
+    description = "Basic username:password credentials.",
+  ): SecuritySchemeObject {
+    return { type: "http", scheme: "basic", description };
+  },
+};
 
 export interface SwaggerOptions {
   title?: string;
@@ -233,7 +357,7 @@ export interface SwaggerOptions {
   description?: string;
   /** Ruta donde se servirá la documentación. Default: `/docs` */
   path?: string;
-  /** Protección con Basic Auth */
+  /** Protección con Basic Auth para el acceso a la UI */
   auth?: {
     username: string;
     password: string;
@@ -242,15 +366,33 @@ export interface SwaggerOptions {
   servers?: Array<{ url: string; description?: string }>;
   /** Schemas adicionales para components.schemas */
   schemas?: Record<string, Record<string, unknown>>;
+  /**
+   * Security scheme definitions added to `components.securitySchemes`.
+   *
+   * Keys become scheme names referenced by `@ApiSecurity('schemeName')`.
+   * Use `SecuritySchemes.*` helpers for common cases.
+   *
+   * @example
+   * ```ts
+   * securitySchemes: {
+   *   bearerAuth: SecuritySchemes.bearerJwt(),
+   * }
+   * ```
+   */
+  securitySchemes?: Record<string, SecuritySchemeObject>;
 }
 
 interface OpenAPIObject {
   openapi: string;
   info: { title: string; version: string; description?: string };
   paths: Record<string, Record<string, any>>;
-  components?: { schemas?: Record<string, any> };
+  components?: {
+    schemas?: Record<string, any>;
+    securitySchemes?: Record<string, any>;
+  };
   tags?: Array<{ name: string; description?: string }>;
   servers?: Array<{ url: string; description?: string }>;
+  security?: Array<Record<string, string[]>>;
 }
 
 /**
@@ -276,6 +418,17 @@ export function buildOpenApiSpec(
   if (options.description) spec.info.description = options.description;
   if (options.servers) spec.servers = options.servers;
 
+  // ── Security schemes ──────────────────────────────────────────────
+  if (
+    options.securitySchemes &&
+    Object.keys(options.securitySchemes).length > 0
+  ) {
+    spec.components!.securitySchemes = options.securitySchemes as Record<
+      string,
+      any
+    >;
+  }
+
   const schemaRefs: Map<any, string> = new Map();
   const tagMap = new Map<string, { name: string; description?: string }>();
 
@@ -285,6 +438,10 @@ export function buildOpenApiSpec(
       Reflect.getMetadata(ROUTES_KEY, ctrl) || [];
     const ctrlTags: string[] =
       Reflect.getMetadata(`${SWAGGER_PROP_PREFIX}:tags`, ctrl) || [];
+
+    // Controller-level security (applies to all routes unless overridden)
+    const ctrlSecurity: Array<Record<string, string[]>> | null =
+      Reflect.getMetadata(`${SWAGGER_PROP_PREFIX}:security`, ctrl) ?? null;
 
     for (const route of routes) {
       const fullPath = normalizePath(`/${prefix}/${route.path}`);
@@ -317,6 +474,18 @@ export function buildOpenApiSpec(
       if (operationMeta?.description)
         operation.description = operationMeta.description;
       if (operationMeta?.deprecated) operation.deprecated = true;
+
+      // ── Security requirement (lock icon in Swagger UI) ──────────
+      // Route-level overrides controller-level; controller-level overrides none.
+      const routeSecurity: Array<Record<string, string[]>> | null =
+        Reflect.getMetadata(
+          `${SWAGGER_PROP_PREFIX}:security:${route.handlerName}`,
+          ctrl,
+        ) ?? null;
+      const security = routeSecurity ?? ctrlSecurity;
+      if (security !== null) {
+        operation.security = security;
+      }
 
       // Build tags list
       const tags = [...ctrlTags];
@@ -589,6 +758,8 @@ function swaggerUiHtml(specUrl: string, title: string): string {
   <style>
     html { box-sizing: border-box; overflow-y: scroll; }
     *, *::before, *::after { box-sizing: inherit; }
+    /* Highlight secured operations */
+    .opblock .authorization__btn.unlocked { opacity: 0.4; }
   </style>
 </head>
 <body>
@@ -600,6 +771,8 @@ function swaggerUiHtml(specUrl: string, title: string): string {
       url: ${JSON.stringify(specUrl)},
       dom_id: '#swagger-ui',
       deepLinking: true,
+      persistAuthorization: true,
+      tryItOutEnabled: true,
       presets: [
         SwaggerUIBundle.presets.apis,
         SwaggerUIStandalonePreset,
