@@ -9,11 +9,7 @@ export interface ValidationIssue {
 }
 
 export type ValidationResult =
-  | void
-  | boolean
-  | string
-  | ValidationIssue
-  | ValidationIssue[];
+  void | boolean | string | ValidationIssue | ValidationIssue[];
 
 export type ValidatorFn<T = unknown> = (
   value: T,
@@ -55,7 +51,7 @@ export function createValidationPipe(
   return async (args, context) => {
     for (const rule of normalizedRules) {
       const parameters = context.parameters.filter((parameter) =>
-        parameterMatchesRule(parameter, rule)
+        parameterMatchesRule(parameter, rule),
       );
 
       for (const parameter of parameters) {
@@ -80,8 +76,9 @@ function parameterMatchesRule(
   parameter: ParamMetadata,
   rule: ValidationRule,
 ): boolean {
-  return parameter.type === rule.type && (
-    rule.key === undefined || parameter.key === rule.key
+  return (
+    parameter.type === rule.type &&
+    (rule.key === undefined || parameter.key === rule.key)
   );
 }
 
@@ -90,18 +87,22 @@ function toValidationIssues(
   fallbackMessage: string,
   parameter: ParamMetadata,
 ): ValidationIssue[] {
-  if (result === undefined || result === true) return [];
+  if (result === undefined || result === true || result === null) return [];
   if (result === false) {
-    return [{
-      message: fallbackMessage,
-      field: parameter.key,
-    }];
+    return [
+      {
+        message: fallbackMessage,
+        field: parameter.key,
+      },
+    ];
   }
   if (typeof result === "string") {
-    return [{
-      message: result,
-      field: parameter.key,
-    }];
+    return [
+      {
+        message: result,
+        field: parameter.key,
+      },
+    ];
   }
   if (Array.isArray(result)) {
     return result.map((issue) => withFallbackField(issue, parameter));
