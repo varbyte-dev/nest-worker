@@ -1394,7 +1394,8 @@ function createSwaggerCommand(): Command {
         opts.auth !== false
           ? `  auth: {
     username: "admin",
-    password: process.env.SWAGGER_PASSWORD || "swagger-secret",
+    // Replace with your Worker env binding, e.g. env.SWAGGER_PASSWORD
+    password: "swagger-secret",
   },
 `
           : "";
