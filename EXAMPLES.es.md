@@ -921,6 +921,61 @@ export class UsersController {
 
 El schema del body y los modelos de respuesta se detectan automáticamente desde `@Body()` y `design:returntype`. Cuando usas `@ApiModel()` + `@Prop()` en tus DTOs, el schema completo aparece en Swagger UI con tipos, descripciones y ejemplos.
 
+### Auth con Bearer Token (🔒 ícono de candado)
+
+Para mostrar el botón **Authorize** y los íconos de candado en endpoints protegidos:
+
+```typescript
+import {
+  createApplication,
+  SecuritySchemes, ApiSecurity,
+  ApiTags, Controller, Get, Req, UseMiddleware,
+} from '@varbyte/nest-worker';
+import { AuthGuard, getAuthUser } from '@varbyte/nest-worker-auth';
+
+// 1. Declarar el esquema en useSwagger()
+app.useSwagger({
+  securitySchemes: {
+    bearerAuth: SecuritySchemes.bearerJwt(),
+    // apiKey: SecuritySchemes.apiKey(),     // también disponible
+    // basic:  SecuritySchemes.basicAuth(),  // también disponible
+  },
+});
+
+const guard = AuthGuard.jwt({ strategy: 'jwt', secretEnvKey: 'JWT_SECRET' });
+
+// 2a. Proteger todo el controlador con @ApiSecurity
+@ApiSecurity('bearerAuth')   // 🔒 aplica a TODOS los métodos
+@ApiTags('Perfil')
+@Controller('profile')
+export class ProfileController {
+  @Get()
+  @UseMiddleware(guard)
+  getPerfil(@Req() req: Request) {
+    return getAuthUser(req);
+  }
+}
+
+// 2b. O proteger solo un método específico
+@ApiTags('Items')
+@Controller('items')
+export class ItemsController {
+  @Get()
+  listar() { return []; }            // público, sin candado
+
+  @Get('mios')
+  @ApiSecurity('bearerAuth')         // 🔒 solo este método
+  @UseMiddleware(guard)
+  listarMios(@Req() req: Request) { return []; }
+}
+```
+
+**En Swagger UI:**
+1. Haz clic en **Authorize** (botón verde, arriba a la derecha)
+2. Pega tu Bearer token (sin el prefijo `Bearer `)
+3. Haz clic en **Authorize** — todos los endpoints 🔒 envían el token automáticamente
+4. El token se mantiene al recargar la página (`persistAuthorization: true`)
+
 ### Generador CLI
 
 ```bash

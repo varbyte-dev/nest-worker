@@ -1035,6 +1035,63 @@ export class UsersController {
 
 The body schema and response models are automatically detected from `@Body()` and `design:returntype`. When you use `@ApiModel()` + `@Prop()` on your DTO classes, the full schema appears in Swagger UI with property types, descriptions, and examples.
 
+### Bearer Token Auth (🔒 Lock Icons)
+
+To show the **Authorize** button and lock icons on protected endpoints, declare a `securitySchemes` in your config and apply `@ApiSecurity()` on the routes or controllers that require authentication.
+
+```typescript
+import {
+  createApplication,
+  SecuritySchemes,
+  ApiSecurity,
+  ApiTags,
+  Controller, Get, Req, UseMiddleware,
+} from '@varbyte/nest-worker';
+import { AuthGuard, getAuthUser } from '@varbyte/nest-worker-auth';
+
+// 1. Declare the scheme
+const app = createApplication(AppModule);
+app.useSwagger({
+  securitySchemes: {
+    bearerAuth: SecuritySchemes.bearerJwt(),
+    // apiKey: SecuritySchemes.apiKey(),     // also available
+    // basic:  SecuritySchemes.basicAuth(),  // also available
+  },
+});
+
+// 2. Mark protected routes with @ApiSecurity
+const guard = AuthGuard.jwt({ strategy: 'jwt', secretEnvKey: 'JWT_SECRET' });
+
+@ApiSecurity('bearerAuth')          // 🔒 applies to ALL methods in this controller
+@ApiTags('Profile')
+@Controller('profile')
+export class ProfileController {
+  @Get()
+  @UseMiddleware(guard)
+  getProfile(@Req() req: Request) {
+    return getAuthUser(req);
+  }
+}
+
+@ApiTags('Items')
+@Controller('items')
+export class ItemsController {
+  @Get()
+  list() { return []; }              // public — no lock
+
+  @Get('mine')
+  @ApiSecurity('bearerAuth')         // 🔒 only this method
+  @UseMiddleware(guard)
+  listMine(@Req() req: Request) { return []; }
+}
+```
+
+**In Swagger UI:**
+1. Click **Authorize** (green button, top right)
+2. Paste your Bearer token (without the `Bearer ` prefix)
+3. Click **Authorize** — all 🔒 endpoints now send the token automatically
+4. Token persists across page reloads (`persistAuthorization: true`)
+
 ### CLI Generator
 
 ```bash
