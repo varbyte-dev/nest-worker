@@ -19,6 +19,28 @@ import { NotificationConsumer } from "./notification.consumer";
 import { HealthScheduledController } from "./health.scheduled";
 import { AssetsController } from "./assets.controller";
 
+// ─── Example Plugin ───────────────────────────────────────────────
+
+import type { NestWorkerPlugin } from "../src/index";
+
+/**
+ * Example plugin that logs lifecycle events.
+ * Plugins can register providers, middleware, or modify the app.
+ */
+const loggingPlugin: NestWorkerPlugin = {
+  name: "example-logger",
+  onBeforeInit(container) {
+    console.log("[plugin] onBeforeInit: container ready to register providers");
+  },
+  onAfterInit(app) {
+    console.log(
+      "[plugin] onAfterInit: app initialized with",
+      app.container.getControllers().length,
+      "controllers",
+    );
+  },
+};
+
 // ─── App Module ───────────────────────────────────────────────────
 
 @Module({
@@ -30,6 +52,7 @@ import { AssetsController } from "./assets.controller";
     AssetsController,
   ],
   providers: [UsersService, NotificationService, ChatRoom],
+  plugins: [loggingPlugin],
 })
 class AppModule {}
 

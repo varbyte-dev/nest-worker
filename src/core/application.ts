@@ -2,6 +2,7 @@ import { ErrorFilterFn, MiddlewareFn } from "./types";
 import { Router } from "./router";
 import { Container } from "./container";
 import { finalizeRequestLogging } from "./request-context";
+import { PluginRegistry } from "./plugin";
 import type { SwaggerOptions } from "../extras/swagger";
 import { buildOpenApiSpec, createSwaggerMiddleware } from "../extras/swagger";
 
@@ -12,11 +13,13 @@ export interface WorkerEnv {
 export class NestWorkerApplication {
   private router: Router;
   private _container: Container;
+  private _pluginRegistry: PluginRegistry;
   private globalMiddlewares: MiddlewareFn[] = [];
   private globalErrorFilters: ErrorFilterFn[] = [];
 
   constructor(private rootModule: any) {
     this._container = new Container();
+    this._pluginRegistry = new PluginRegistry();
     this.router = new Router(this._container, this.globalErrorFilters);
     this.bootstrap();
   }
@@ -30,12 +33,30 @@ export class NestWorkerApplication {
     return this._container;
   }
 
+  /** Expose the plugin registry for advanced use cases. */
+  get pluginRegistry(): PluginRegistry {
+    return this._pluginRegistry;
+  }
+
   private bootstrap() {
+    // 1. Collect plugins from root module metadata
+    const metadata = Reflect.getMetadata("__module__", this.rootModule) || {};
+    if (metadata.plugins) {
+      this._pluginRegistry.registerMany(metadata.plugins);
+    }
+
+    // 2. Run onBeforeInit hooks (plugins can register providers in the container)
+    this._pluginRegistry.runBeforeInit(this._container);
+
+    // 3. Register the root module and discover controllers
     this._container.register(this.rootModule);
     const controllers = this._container.getControllers();
     for (const ctrl of controllers) {
       this.router.registerController(ctrl);
     }
+
+    // 4. Run onAfterInit hooks (plugins can register global middleware, etc.)
+    this._pluginRegistry.runAfterInit(this);
   }
 
   use(middleware: MiddlewareFn): this {

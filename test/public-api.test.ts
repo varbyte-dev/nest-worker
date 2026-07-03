@@ -42,6 +42,7 @@ import {
   createValidationPipe,
   createApplication,
   devRateLimit,
+  PluginRegistry,
   logger,
   rateLimit,
   requestLogger,
@@ -104,6 +105,7 @@ describe("public API contract", () => {
     );
     expect(ApiModel).toEqual(expect.any(Function));
     expect(Prop).toEqual(expect.any(Function));
+    expect(PluginRegistry).toEqual(expect.any(Function));
     expect(ApiOperation).toEqual(expect.any(Function));
     expect(ApiBody).toEqual(expect.any(Function));
     expect(ApiResponse).toEqual(expect.any(Function));

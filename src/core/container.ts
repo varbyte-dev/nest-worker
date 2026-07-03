@@ -1,4 +1,5 @@
 import { InjectionToken } from "./types";
+import type { NestWorkerPlugin } from "./plugin";
 
 const MODULE_KEY = "__module__";
 const DEPS_KEY = "__deps__";
@@ -22,10 +23,22 @@ export class Container {
   private moduleContexts = new Map<any, ModuleContext>();
   private controllerContexts = new Map<any, ModuleContext>();
   private controllers: any[] = [];
+  private plugins: NestWorkerPlugin[] = [];
 
   register(moduleClass: any) {
     this.rootContext = this.createModuleContext(moduleClass);
     this.controllers = Array.from(this.controllerContexts.keys());
+
+    // Collect plugins from root module metadata
+    const metadata = Reflect.getMetadata(MODULE_KEY, moduleClass) || {};
+    if (metadata.plugins) {
+      this.plugins = [...metadata.plugins];
+    }
+  }
+
+  /** Returns all registered plugins. */
+  getPlugins(): NestWorkerPlugin[] {
+    return [...this.plugins];
   }
 
   private createModuleContext(moduleClass: any): ModuleContext {
@@ -177,7 +190,9 @@ export class Container {
 
     const deps: InjectionToken[] =
       Reflect.getMetadata(DEPS_KEY, ctrlClass) || [];
-    const resolvedDeps = deps.map((dep) => this.resolveFromContext(dep, context));
+    const resolvedDeps = deps.map((dep) =>
+      this.resolveFromContext(dep, context),
+    );
     const instance = new ctrlClass(...resolvedDeps);
     context.instances.set(ctrlClass, instance);
     return instance;

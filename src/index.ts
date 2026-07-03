@@ -2,6 +2,10 @@
 export { createApplication, NestWorkerApplication } from "./core/application";
 export type { WorkerEnv } from "./core/application";
 
+// Plugin System
+export { PluginRegistry } from "./core/plugin";
+export type { NestWorkerPlugin, PluginFactory } from "./core/plugin";
+
 // Decorators
 export {
   Module,
