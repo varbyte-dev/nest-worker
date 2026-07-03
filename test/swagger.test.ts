@@ -418,6 +418,8 @@ describe("app.useSwagger() integration", () => {
     const html = await uiResponse.text();
     expect(html).toContain("swagger-ui");
     expect(html).toContain("/docs/json");
+    expect(html).toContain("swagger-ui-standalone-preset.js");
+    expect(html).toContain("SwaggerUIStandalonePreset");
 
     // Test JSON spec
     const jsonResponse = await app.handler.fetch(

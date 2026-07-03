@@ -168,9 +168,6 @@ function createControllerCommand(): Command {
 
 function buildControllerTemplate(info: NameInfo): string {
   const pluralPath = pluralKebab(info);
-  const serviceName = `${info.pascal}Service`;
-  const serviceVar = `${info.camel}Service`;
-  const serviceFile = `./${info.kebab}.service`;
 
   return `import {
   Controller,
@@ -181,54 +178,40 @@ function buildControllerTemplate(info: NameInfo): string {
   Body,
   Param,
   Query,
-  D1,
-  ApiTags,
-  ApiOperation,
 } from '@varbyte/nest-worker';
-import type { D1Database } from '@varbyte/nest-worker';
-import { ${serviceName} } from '${serviceFile}.js';
 
-@ApiTags('${info.pascal}')
-@Controller('${pluralPath}', [${serviceName}])
+@Controller('${pluralPath}')
 export class ${info.pascal}Controller {
-  constructor(private readonly ${serviceVar}: ${serviceName}) {}
 
   @Get()
-  @ApiOperation({ summary: 'List all ${pluralPath}' })
-  async findAll(@D1() db: D1Database, @Query('page') page?: string) {
+  async findAll(@Query('page') page?: string) {
     const p = page ? parseInt(page, 10) : 1;
-    return this.${serviceVar}.findAll(db, p);
+    // TODO: implement paginated list
+    return { data: [], total: 0, page: p };
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get ${info.human} by ID' })
-  async findOne(@D1() db: D1Database, @Param('id') id: string) {
-    return this.${serviceVar}.findById(db, parseInt(id, 10));
+  async findOne(@Param('id') id: string) {
+    // TODO: implement find by ID
+    return { id: parseInt(id, 10) };
   }
 
   @Post()
-  @ApiOperation({ summary: 'Create a new ${info.human.toLowerCase()}' })
-  async create(
-    @D1() db: D1Database,
-    @Body() body: Record<string, unknown>,
-  ) {
-    return this.${serviceVar}.create(db, body);
+  async create(@Body() body: Record<string, unknown>) {
+    // TODO: implement create
+    return body;
   }
 
   @Put(':id')
-  @ApiOperation({ summary: 'Update ${info.human} by ID' })
-  async update(
-    @D1() db: D1Database,
-    @Param('id') id: string,
-    @Body() body: Record<string, unknown>,
-  ) {
-    return this.${serviceVar}.update(db, parseInt(id, 10), body);
+  async update(@Param('id') id: string, @Body() body: Record<string, unknown>) {
+    // TODO: implement update
+    return { id: parseInt(id, 10), ...body };
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Delete ${info.human} by ID' })
-  async remove(@D1() db: D1Database, @Param('id') id: string) {
-    return this.${serviceVar}.delete(db, parseInt(id, 10));
+  async remove(@Param('id') id: string) {
+    // TODO: implement delete
+    return { message: 'Deleted ' + id };
   }
 }
 `;
@@ -271,53 +254,35 @@ function createServiceCommand(): Command {
 }
 
 function buildServiceTemplate(info: NameInfo): string {
-  const repoName = `${info.pascal}Repository`;
-  const repoVar = `${info.camel}Repository`;
-  const repoFile = `./${info.kebab}.repository`;
-  const entityName = info.pascal;
-  const tableName = pluralKebab(info).replace(/-/g, "_");
-
-  return `import { Injectable, NotFoundException } from '@varbyte/nest-worker';
+  return `import { Injectable } from '@varbyte/nest-worker';
 import type { D1Database } from '@varbyte/nest-worker';
-import { ${repoName} } from '${repoFile}.js';
-import type { ${entityName} } from './${info.kebab}.model.js';
 
 @Injectable()
 export class ${info.pascal}Service {
-  private getRepo(db: D1Database): ${repoName} {
-    return new ${repoName}(db);
+
+  async findAll(db: D1Database, page = 1): Promise<{ data: Record<string, unknown>[]; total: number }> {
+    // TODO: implement paginated list using D1
+    return { data: [], total: 0 };
   }
 
-  async findAll(db: D1Database, page = 1): Promise<{ data: ${entityName}[]; total: number }> {
-    const repo = this.getRepo(db);
-    const [data, total] = await Promise.all([
-      repo.findAll(),
-      repo.count(),
-    ]);
-    return { data, total };
-  }
-
-  async findById(db: D1Database, id: number): Promise<${entityName}> {
-    const item = await this.getRepo(db).findById(id);
-    if (!item) throw new NotFoundException(\`${entityName} #\${id} not found\`);
-    return item;
+  async findById(db: D1Database, id: number): Promise<Record<string, unknown> | null> {
+    // TODO: implement find by ID
+    return null;
   }
 
   async create(db: D1Database, data: Record<string, unknown>): Promise<{ id: number; message: string }> {
-    const result = await this.getRepo(db).create(data as Omit<${entityName}, 'id'>);
-    return { id: result.meta.last_row_id!, message: '${entityName} created' };
+    // TODO: implement create
+    return { id: 0, message: 'Created' };
   }
 
-  async update(db: D1Database, id: number, data: Record<string, unknown>): Promise<${entityName}> {
-    await this.findById(db, id);
-    await this.getRepo(db).update(id, data as Partial<Omit<${entityName}, 'id'>>);
-    return this.findById(db, id);
+  async update(db: D1Database, id: number, data: Record<string, unknown>): Promise<Record<string, unknown>> {
+    // TODO: implement update
+    return { id, ...data };
   }
 
   async delete(db: D1Database, id: number): Promise<{ message: string }> {
-    await this.findById(db, id);
-    await this.getRepo(db).delete(id);
-    return { message: \`${entityName} #\${id} deleted\` };
+    // TODO: implement delete
+    return { message: 'Deleted ' + id };
   }
 }
 `;
@@ -376,7 +341,7 @@ function createResourceCommand(): Command {
       {
         rel: `${relDir}/${fileName(info, "repository.ts")}`,
         abs: resolve(dir, fileName(info, "repository.ts")),
-        content: buildRepositoryTemplate(info),
+        content: buildResourceRepositoryTemplate(info),
       },
       {
         rel: `${relDir}/${fileName(info, "model.ts")}`,
@@ -573,6 +538,24 @@ export class ${info.pascal}Service {
     await this.findById(db, id);
     await this.getRepo(db).delete(id);
     return { message: \`${entityName} #\${id} deleted\` };
+  }
+}
+`;
+}
+
+function buildResourceRepositoryTemplate(info: NameInfo): string {
+  const tableName = pluralKebab(info).replace(/-/g, "_");
+  const className = `${info.pascal}Repository`;
+  const entityName = info.pascal;
+
+  return `import type { D1Database } from '@varbyte/nest-worker';
+import { D1Repository, Injectable } from '@varbyte/nest-worker';
+import type { ${entityName} } from './${info.kebab}.model.js';
+
+@Injectable()
+export class ${className} extends D1Repository<${entityName}> {
+  constructor(protected readonly db: D1Database) {
+    super(db, '${tableName}');
   }
 }
 `;
@@ -863,15 +846,14 @@ function createRepositoryCommand(): Command {
 }
 
 function buildRepositoryTemplate(info: NameInfo): string {
-  const entityName = info.pascal;
   const tableName = pluralKebab(info).replace(/-/g, "_");
   const className = `${info.pascal}Repository`;
 
-  return `import { D1Repository, D1Database, Injectable } from '@varbyte/nest-worker';
-import type { ${entityName} } from './${info.kebab}.model.js';
+  return `import type { D1Database } from '@varbyte/nest-worker';
+import { D1Repository, Injectable } from '@varbyte/nest-worker';
 
 @Injectable()
-export class ${className} extends D1Repository<${entityName}> {
+export class ${className} extends D1Repository<Record<string, unknown>> {
   constructor(protected readonly db: D1Database) {
     super(db, '${tableName}');
   }
@@ -925,7 +907,8 @@ function buildModelTemplate(info: NameInfo): string {
 export interface ${entityName} {
   [key: string]: unknown;
   id: number;
-  // TODO: add your fields here
+  name: string;
+  description?: string;
   created_at: string;
   updated_at?: string;
 }
@@ -1252,7 +1235,11 @@ function createSwaggerCommand(): Command {
     "Automatically update worker.ts to enable Swagger",
   );
   cmd.option("--title <title>", "API title for Swagger docs", "My API");
-  cmd.option("--version <version>", "API version for Swagger docs", "1.0.0");
+  cmd.option(
+    "--api-version <version>",
+    "API version for Swagger docs",
+    "1.0.0",
+  );
   cmd.option("--path <path>", "Swagger UI path", "/docs");
   cmd.option("--no-auth", "Disable Basic Auth for Swagger UI");
   cmd.action(
@@ -1261,7 +1248,7 @@ function createSwaggerCommand(): Command {
       detect?: boolean;
       updateWorker?: boolean;
       title?: string;
-      version?: string;
+      apiVersion?: string;
       path?: string;
       auth?: boolean;
     }) => {
@@ -1442,13 +1429,13 @@ function createSwaggerCommand(): Command {
  * \`\`\`
  */
 export const swaggerConfig: SwaggerOptions = {
-  title: process.env.APP_NAME || "${opts.title || "My API"}",
-  version: "${opts.version || "1.0.0"}",
+  title: "${opts.title || "My API"}",
+  version: "${opts.apiVersion || "1.0.0"}",
   description: "API documentation generated with @varbyte/nest-worker",
   path: "${opts.path || "/docs"}",
 ${authBlock}  servers: [
     {
-      url: process.env.API_URL || "${suggestedUrl}",
+      url: "${suggestedUrl}",
       description: "API server",
     },
   ],
@@ -1601,7 +1588,8 @@ function createEnvCommand(): Command {
           return;
         }
         // Replace existing line
-        content = content.replace(varRegex, `${varName} = "${value}"`);
+        const tomlVal = type === "json" ? `'${value}'` : `"${value}"`;
+        content = content.replace(varRegex, `${varName} = ${tomlVal}`);
         writeFileSync(wranglerPath, content, "utf-8");
         console.log(
           pc.green(`\n  ✓ Updated \`${varName}\` in wrangler.toml\n`),
@@ -1612,13 +1600,15 @@ function createEnvCommand(): Command {
       // Ensure [vars] section exists
       if (/^\[vars\]/m.test(content)) {
         // Append after the [vars] section
+        const tomlVal2 = type === "json" ? `'${value}'` : `"${value}"`;
         content = content.replace(
           /^\[vars\]\s*\n/m,
-          `[vars]\n${varName} = "${value}"\n`,
+          `[vars]\n${varName} = ${tomlVal2}\n`,
         );
       } else {
         // Add [vars] section at the end
-        content += `\n[vars]\n${varName} = "${value}"\n`;
+        const tomlVal3 = type === "json" ? `'${value}'` : `"${value}"`;
+        content += `\n[vars]\n${varName} = ${tomlVal3}\n`;
       }
 
       writeFileSync(wranglerPath, content, "utf-8");
@@ -1698,10 +1688,11 @@ function buildWebSocketTemplate(info: NameInfo): string {
 export class ${ctrlName} {
   @WebSocket('/echo')
   handleEcho() {
-    const [client, server] = new WebSocketPair();
+    const pair = new WebSocketPair();
+    const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
     server.accept();
 
-    server.addEventListener('message', (event) => {
+    server.addEventListener('message', (event: MessageEvent) => {
       server.send(\`Echo: \${event.data}\`);
     });
 
@@ -1974,7 +1965,8 @@ function buildMigrationTemplate(info: NameInfo): string {
 
 CREATE TABLE IF NOT EXISTS ${tableName} (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  -- TODO: add your columns here
+  name TEXT NOT NULL,
+  description TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT
 );

@@ -594,6 +594,7 @@ function swaggerUiHtml(specUrl: string, title: string): string {
 <body>
   <div id="swagger-ui"></div>
   <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
   <script>
     SwaggerUIBundle({
       url: ${JSON.stringify(specUrl)},
@@ -601,7 +602,7 @@ function swaggerUiHtml(specUrl: string, title: string): string {
       deepLinking: true,
       presets: [
         SwaggerUIBundle.presets.apis,
-        SwaggerUIBundle.SwaggerUIStandalonePreset,
+        SwaggerUIStandalonePreset,
       ],
       layout: "StandaloneLayout",
     });

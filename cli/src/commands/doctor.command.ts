@@ -1,8 +1,8 @@
-import { Command } from 'commander';
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import pc from 'picocolors';
-import { detectProject, findProjectRoot } from '../utils/project.js';
+import { Command } from "commander";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { resolve } from "node:path";
+import pc from "picocolors";
+import { detectProject, findProjectRoot } from "../utils/project.js";
 
 interface Diagnostic {
   pass: boolean;
@@ -11,56 +11,59 @@ interface Diagnostic {
 }
 
 function checkDependencies(root: string): Diagnostic {
-  const pkgPath = resolve(root, 'package.json');
+  const pkgPath = resolve(root, "package.json");
   if (!existsSync(pkgPath)) {
     return {
       pass: false,
-      message: 'package.json not found',
-      fix: 'Run `nest-worker new <name>` to scaffold a new project.',
+      message: "package.json not found",
+      fix: "Run `nest-worker new <name>` to scaffold a new project.",
     };
   }
 
   try {
-    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
     const deps = { ...pkg.dependencies, ...pkg.devDependencies };
 
-    if (!deps['@varbyte/nest-worker']) {
+    if (!deps["@varbyte/nest-worker"]) {
       return {
         pass: false,
-        message: '@varbyte/nest-worker is not installed',
-        fix: 'Run `npm install @varbyte/nest-worker` (or your package manager equivalent).',
+        message: "@varbyte/nest-worker is not installed",
+        fix: "Run `npm install @varbyte/nest-worker` (or your package manager equivalent).",
       };
     }
 
-    const requiredDeps = ['@varbyte/nest-worker'];
+    const requiredDeps = ["@varbyte/nest-worker"];
     const missing = requiredDeps.filter((dep) => !deps[dep]);
 
     if (missing.length === 0) {
-      return { pass: true, message: 'All required dependencies are installed.' };
+      return {
+        pass: true,
+        message: "All required dependencies are installed.",
+      };
     }
 
     return {
       pass: false,
-      message: `Missing dependencies: ${missing.join(', ')}`,
-      fix: `Run \`npm install ${missing.join(' ')}\` (or your package manager equivalent).`,
+      message: `Missing dependencies: ${missing.join(", ")}`,
+      fix: `Run \`npm install ${missing.join(" ")}\` (or your package manager equivalent).`,
     };
   } catch {
     return {
       pass: false,
-      message: 'package.json is malformed',
-      fix: 'Check the syntax of your package.json file.',
+      message: "package.json is malformed",
+      fix: "Check the syntax of your package.json file.",
     };
   }
 }
 
 function checkTsConfig(root: string): Diagnostic[] {
-  const tsconfigPath = resolve(root, 'tsconfig.json');
+  const tsconfigPath = resolve(root, "tsconfig.json");
   if (!existsSync(tsconfigPath)) {
     return [
       {
         pass: false,
-        message: 'tsconfig.json not found',
-        fix: 'Create a tsconfig.json with TypeScript compiler options.',
+        message: "tsconfig.json not found",
+        fix: "Create a tsconfig.json with TypeScript compiler options.",
       },
     ];
   }
@@ -68,19 +71,19 @@ function checkTsConfig(root: string): Diagnostic[] {
   const results: Diagnostic[] = [];
 
   try {
-    const config = JSON.parse(readFileSync(tsconfigPath, 'utf-8'));
+    const config = JSON.parse(readFileSync(tsconfigPath, "utf-8"));
     const compilerOptions = config.compilerOptions || {};
 
     const checks: [string, string, string?][] = [
       [
-        'experimentalDecorators',
-        'experimentalDecorators is enabled',
-        'experimentalDecorators is not enabled',
+        "experimentalDecorators",
+        "experimentalDecorators is enabled",
+        "experimentalDecorators is not enabled",
       ],
       [
-        'emitDecoratorMetadata',
-        'emitDecoratorMetadata is enabled',
-        'emitDecoratorMetadata is not enabled',
+        "emitDecoratorMetadata",
+        "emitDecoratorMetadata is enabled",
+        "emitDecoratorMetadata is not enabled",
       ],
     ];
 
@@ -97,8 +100,8 @@ function checkTsConfig(root: string): Diagnostic[] {
     }
 
     // Check that target is at least ES2021
-    const target = (compilerOptions.target || '').toUpperCase();
-    const validTargets = ['ES2021', 'ES2022', 'ESNEXT'];
+    const target = (compilerOptions.target || "").toUpperCase();
+    const validTargets = ["ES2021", "ES2022", "ESNEXT"];
     if (validTargets.includes(target)) {
       results.push({
         pass: true,
@@ -113,14 +116,76 @@ function checkTsConfig(root: string): Diagnostic[] {
     } else {
       results.push({
         pass: true,
-        message: 'TypeScript target is not explicitly set (defaults are fine).',
+        message: "TypeScript target is not explicitly set (defaults are fine).",
       });
     }
   } catch {
     results.push({
       pass: false,
-      message: 'tsconfig.json is malformed',
-      fix: 'Check the syntax of your tsconfig.json file.',
+      message: "tsconfig.json is malformed",
+      fix: "Check the syntax of your tsconfig.json file.",
+    });
+  }
+
+  return results;
+}
+
+function checkD1Usage(root: string): Diagnostic[] {
+  const modulesDir = resolve(root, "src", "modules");
+  if (!existsSync(modulesDir)) {
+    return [
+      {
+        pass: true,
+        message: "No D1 repositories detected (no src/modules directory).",
+      },
+    ];
+  }
+
+  // Scan for .repository.ts files
+  const repoFiles: string[] = [];
+  function scanDir(dir: string) {
+    const entries = readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = resolve(dir, entry.name);
+      if (entry.isDirectory() && !entry.name.startsWith(".")) {
+        scanDir(fullPath);
+      } else if (entry.isFile() && entry.name.endsWith(".repository.ts")) {
+        repoFiles.push(fullPath);
+      }
+    }
+  }
+  scanDir(modulesDir);
+
+  if (repoFiles.length === 0) {
+    return [{ pass: true, message: "No D1 repositories found." }];
+  }
+
+  const results: Diagnostic[] = [];
+  for (const file of repoFiles) {
+    results.push({
+      pass: true,
+      message: `D1 repository detected: ${file.replace(root, "").replace(/^\//, "")}`,
+    });
+  }
+
+  // Check wrangler.toml for D1 binding
+  const wranglerPath = resolve(root, "wrangler.toml");
+  if (!existsSync(wranglerPath)) {
+    results.push({
+      pass: false,
+      message: "wrangler.toml not found but D1 repositories are present",
+      fix: "Create a wrangler.toml with a [[d1_databases]] block and D1 binding.",
+    });
+    return results;
+  }
+
+  const content = readFileSync(wranglerPath, "utf-8");
+  if (!/\[\[d1_databases\]\]/.test(content)) {
+    results.push({
+      pass: false,
+      message:
+        "D1 repositories detected but no [[d1_databases]] binding in wrangler.toml",
+      fix: 'Add `[[d1_databases]]` with `binding = "DB"` and `database_name`/`database_id` in wrangler.toml.',
     });
   }
 
@@ -128,26 +193,26 @@ function checkTsConfig(root: string): Diagnostic[] {
 }
 
 function checkWrangler(root: string): Diagnostic[] {
-  const wranglerPath = resolve(root, 'wrangler.toml');
+  const wranglerPath = resolve(root, "wrangler.toml");
   if (!existsSync(wranglerPath)) {
     return [
       {
         pass: false,
-        message: 'wrangler.toml not found',
-        fix: 'Create a wrangler.toml configuration file for Cloudflare Workers deployment.',
+        message: "wrangler.toml not found",
+        fix: "Create a wrangler.toml configuration file for Cloudflare Workers deployment.",
       },
     ];
   }
 
   const results: Diagnostic[] = [];
-  const content = stripTomlComments(readFileSync(wranglerPath, 'utf-8'));
+  const content = stripTomlComments(readFileSync(wranglerPath, "utf-8"));
 
   // Check for D1 bindings
   const hasD1Binding = /\[\[d1_databases\]\]/.test(content);
   if (hasD1Binding) {
     results.push({
       pass: true,
-      message: 'D1 database bindings are configured.',
+      message: "D1 database bindings are configured.",
     });
 
     // Check binding has required fields
@@ -160,14 +225,14 @@ function checkWrangler(root: string): Diagnostic[] {
     } else {
       results.push({
         pass: false,
-        message: 'D1 binding missing a binding name',
+        message: "D1 binding missing a binding name",
         fix: 'Add `binding = "DB"` inside your [[d1_databases]] block.',
       });
     }
   } else {
     results.push({
       pass: true,
-      message: 'No D1 bindings required (skipped).',
+      message: "No D1 bindings required (skipped).",
     });
   }
 
@@ -175,12 +240,12 @@ function checkWrangler(root: string): Diagnostic[] {
   if (/compatibility_flags\s*=/.test(content)) {
     results.push({
       pass: true,
-      message: 'compatibility_flags is set.',
+      message: "compatibility_flags is set.",
     });
   } else {
     results.push({
       pass: false,
-      message: 'compatibility_flags not set in wrangler.toml',
+      message: "compatibility_flags not set in wrangler.toml",
       fix: 'Add `compatibility_flags = ["nodejs_compat"]` to wrangler.toml.',
     });
   }
@@ -189,12 +254,12 @@ function checkWrangler(root: string): Diagnostic[] {
   if (/compatibility_date\s*=/.test(content)) {
     results.push({
       pass: true,
-      message: 'compatibility_date is set.',
+      message: "compatibility_date is set.",
     });
   } else {
     results.push({
       pass: false,
-      message: 'compatibility_date not set in wrangler.toml',
+      message: "compatibility_date not set in wrangler.toml",
       fix: 'Add `compatibility_date = "2025-01-01"` to wrangler.toml (use a recent date).',
     });
   }
@@ -204,24 +269,24 @@ function checkWrangler(root: string): Diagnostic[] {
 
 function stripTomlComments(content: string): string {
   return content
-    .split('\n')
-    .filter((line) => !line.trimStart().startsWith('#'))
-    .join('\n');
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("#"))
+    .join("\n");
 }
 
 function checkWorkerEntry(root: string): Diagnostic {
-  const entryPath = resolve(root, 'src', 'worker.ts');
+  const entryPath = resolve(root, "src", "worker.ts");
   if (existsSync(entryPath)) {
     return {
       pass: true,
-      message: 'Worker entry point exists at src/worker.ts.',
+      message: "Worker entry point exists at src/worker.ts.",
     };
   }
 
   return {
     pass: false,
-    message: 'Worker entry point not found at src/worker.ts',
-    fix: 'Run `nest-worker new <name>` to scaffold a project or create src/worker.ts manually.',
+    message: "Worker entry point not found at src/worker.ts",
+    fix: "Run `nest-worker new <name>` to scaffold a project or create src/worker.ts manually.",
   };
 }
 
@@ -234,48 +299,52 @@ function printDiagnostic(
   console.log(`  ${pc.bold(label)}`);
 
   for (const diag of items) {
-    const icon = diag.pass ? pc.green('✓') : pc.red('✗');
+    const icon = diag.pass ? pc.green("✓") : pc.red("✗");
     const color = diag.pass ? pc.green : pc.red;
     console.log(`  ${icon} ${color(diag.message)}`);
 
     if (!diag.pass && diag.fix) {
-      console.log(`     ${pc.dim('💡')} ${pc.dim(diag.fix)}`);
+      console.log(`     ${pc.dim("💡")} ${pc.dim(diag.fix)}`);
     }
   }
 
-  console.log('');
+  console.log("");
 }
 
 export function doctorCommand(): Command {
-  const cmd = new Command('doctor');
-  cmd.description('Check project configuration for common issues');
+  const cmd = new Command("doctor");
+  cmd.description("Check project configuration for common issues");
   cmd.action(() => {
-    console.log(pc.bold('\n🩺 nest-worker Doctor\n'));
+    console.log(pc.bold("\n🩺 nest-worker Doctor\n"));
 
     const projectRoot = findProjectRoot();
     const project = detectProject(projectRoot);
 
     console.log(
-      `  ${pc.dim('Checking project at:')} ${pc.white(project.root)}\n`,
+      `  ${pc.dim("Checking project at:")} ${pc.white(project.root)}\n`,
     );
 
     // 1. Dependencies
-    printDiagnostic('Dependencies', checkDependencies(projectRoot));
+    printDiagnostic("Dependencies", checkDependencies(projectRoot));
 
     // 2. TypeScript configuration
-    printDiagnostic('TypeScript Config', checkTsConfig(projectRoot));
+    printDiagnostic("TypeScript Config", checkTsConfig(projectRoot));
 
     // 3. Worker entry point
-    printDiagnostic('Entry Point', checkWorkerEntry(projectRoot));
+    printDiagnostic("Entry Point", checkWorkerEntry(projectRoot));
 
-    // 4. Wrangler configuration
-    printDiagnostic('Wrangler Config', checkWrangler(projectRoot));
+    // 4. D1 usage
+    printDiagnostic("D1 Usage", checkD1Usage(projectRoot));
+
+    // 5. Wrangler configuration
+    printDiagnostic("Wrangler Config", checkWrangler(projectRoot));
 
     // Tally results
     const all: Diagnostic[] = [
       checkDependencies(projectRoot),
       checkWorkerEntry(projectRoot),
       ...checkTsConfig(projectRoot),
+      ...checkD1Usage(projectRoot),
       ...checkWrangler(projectRoot),
     ];
 
@@ -284,7 +353,9 @@ export function doctorCommand(): Command {
 
     if (failed === 0) {
       console.log(
-        pc.green(`  ✅ All ${passed} checks passed. Your project looks good!\n`),
+        pc.green(
+          `  ✅ All ${passed} checks passed. Your project looks good!\n`,
+        ),
       );
     } else {
       console.log(
@@ -294,7 +365,7 @@ export function doctorCommand(): Command {
       );
       console.log(
         pc.dim(
-          '  Review the issues above. Most can be fixed by following the suggestions.\n',
+          "  Review the issues above. Most can be fixed by following the suggestions.\n",
         ),
       );
     }

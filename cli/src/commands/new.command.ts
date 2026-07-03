@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import pc from "picocolors";
-import { resolve } from "node:path";
+import { resolve, basename } from "node:path";
 import { existsSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { parseName } from "../utils/naming.js";
@@ -23,7 +23,10 @@ export function newCommand(): Command {
         process.exit(1);
       }
 
-      const n = parseName(name);
+      // Use basename for package name so absolute paths work correctly
+      // e.g. "/Users/me/my-project" -> package name "my-project"
+      const projectName = basename(targetDir);
+      const n = parseName(projectName);
 
       console.log(
         pc.bold(
