@@ -22,6 +22,7 @@
 - **Static Assets** — `@ServeStatic()` decorator and `serveStaticAssets()` middleware for Workers Sites
 - **HTTP Exceptions** — `NotFoundException`, `BadRequestException`, etc.
 - **Swagger / OpenAPI** — auto-generated API documentation with `@ApiModel()` and `@Prop()` decorators, served via Swagger UI with optional Basic Auth
+- **Plugin System** — extend the DI container with custom providers via `NestWorkerPlugin` lifecycle hooks (`onBeforeInit`, `onAfterInit`, `onBeforeDestroy`)
 - **Zero runtime dependencies** — only `reflect-metadata`
 - **SQL Injection Protection** — all identifiers are sanitized automatically
 
@@ -840,6 +841,221 @@ wrangler deploy
 # Secrets
 wrangler secret put API_SECRET
 ```
+
+---
+
+---
+
+## Ecosystem Packages
+
+In addition to the core framework, the following packages extend nest-worker with
+production-ready middleware for caching, authentication, and rate limiting.
+
+---
+
+### @varbyte/nest-worker-cache
+
+Cache responses at the edge using **Cloudflare Cache API** (no extra cost) or **KV**
+(persistent storage with custom TTL).
+
+```bash
+npm install @varbyte/nest-worker-cache
+```
+
+```ts
+import { cacheMiddleware, withCache, invalidateCache } from '@varbyte/nest-worker-cache';
+import { createApplication, Controller, Get, UseMiddleware } from '@varbyte/nest-worker';
+
+// Global — cache all responses for 1 hour via Cache API
+const app = createApplication(AppModule);
+app.use(cacheMiddleware({ ttl: 3600 }));
+
+// Per-route with KV backend
+@Controller('products')
+export class ProductsController {
+  @Get()
+  @UseMiddleware(cacheMiddleware({
+    ttl: 60,
+    storage: 'kv',
+    kvBinding: 'PRODUCTS_CACHE',
+  }))
+  async getAll() { return { data: 'cached response' }; }
+}
+
+// Manual invalidation
+await invalidateCache(env, '/products/123', 'kv', 'PRODUCTS_CACHE');
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `ttl` | `number` | `3600` | Time-to-live in seconds |
+| `storage` | `'cache-api' \| 'kv'` | `'cache-api'` | Backend storage strategy |
+| `kvBinding` | `string` | — | KV namespace binding name (required when `storage: 'kv'`) |
+| `staleWhileRevalidate` | `boolean` | `false` | Serve stale data while fetching fresh content |
+
+---
+
+### @varbyte/nest-worker-auth
+
+Authenticate requests with **JWT**, **Cloudflare Access**, or **API keys**.
+Uses Web Crypto API — zero external dependencies.
+
+```bash
+npm install @varbyte/nest-worker-auth
+```
+
+```ts
+import { AuthGuard, getAuthUser } from '@varbyte/nest-worker-auth';
+import { Controller, Get, Req, UseMiddleware } from '@varbyte/nest-worker';
+
+// JWT Authentication
+@Controller()
+class ProfileController {
+  @Get('/profile')
+  @UseMiddleware(AuthGuard.jwt({ secret: process.env.JWT_SECRET }))
+  getProfile(@Req() req: Request) {
+    const user = getAuthUser(req);
+    return { user };
+  }
+}
+
+// Cloudflare Access
+@Get('/admin')
+@UseMiddleware(AuthGuard.cfAccess({
+  teamDomain: 'my-team.cloudflareaccess.com',
+  audience: '12a345b6c7d8e9f0a1b2c3d4e5f6a7b8',
+}))
+getAdmin(@Req() req: Request) { return { admin: getAuthUser(req) }; }
+
+// API Key
+@UseMiddleware(AuthGuard.apiKey({ keyEnvKey: 'API_KEY' }))
+
+// Multi-strategy (any mode)
+@UseMiddleware(AuthGuard({
+  strategies: [
+    { strategy: 'jwt', secretEnvKey: 'JWT_SECRET' },
+    { strategy: 'api-key', keyEnvKey: 'API_KEY' },
+  ],
+  mode: 'any',
+}))
+```
+
+| Strategy | Guard | Description |
+|----------|-------|-------------|
+| JWT | `AuthGuard.jwt()` | HS256, RS256, ES256 with issuer/audience validation |
+| Cloudflare Access | `AuthGuard.cfAccess()` | Fetches JWKS from your team domain, caches keys for 1h |
+| API Key | `AuthGuard.apiKey()` | Header-based auth with static key, env binding, or rotation keys |
+| Multi | `AuthGuard()` | Combine strategies with `any` or `all` mode |
+
+The authenticated user is available via `getAuthUser(req)` and includes:
+`id`, `name`, `email`, `roles`, `raw` claims, and the `strategy` name.
+
+---
+
+### @varbyte/nest-worker-rate-limit
+
+Protect your APIs with configurable rate limits. Supports **in-memory**
+(development) and **KV** (production) storage.
+
+```bash
+npm install @varbyte/nest-worker-rate-limit
+```
+
+```ts
+import { RateLimitGuard } from '@varbyte/nest-worker-rate-limit';
+import { Controller, Get, UseMiddleware, createApplication } from '@varbyte/nest-worker';
+
+// Per-route (in-memory, development)
+@Controller()
+class ApiController {
+  @Get('/api')
+  @UseMiddleware(RateLimitGuard({ windowMs: 60_000, max: 100 }))
+  getData() { return { ok: true }; }
+}
+
+// Global (KV, production)
+const app = createApplication(AppModule);
+app.use(RateLimitGuard({
+  max: 1000,
+  storage: 'kv',
+  kvBinding: 'RATE_LIMIT',
+}));
+export default app.handler;
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `windowMs` | `number` | `60_000` | Time window in milliseconds |
+| `max` | `number` | `100` | Max requests per window |
+| `storage` | `'memory' \| 'kv'` | `'memory'` | Backend storage |
+| `kvBinding` | `string` | — | KV namespace binding name (required when `storage: 'kv'`) |
+| `statusCode` | `number` | `429` | Response status when limit is exceeded |
+| `message` | `string \| object` | `'Too Many Requests'` | Response body |
+| `keyExtractor` | `(req) => string` | IP-based | Custom key for rate limiting |
+
+Response headers: `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`,
+`X-RateLimit-Reset`.
+
+---
+
+### Plugin System
+
+Extend the DI container and application lifecycle with plugins. Plugins can
+register providers before module initialization, add global middleware after
+initialization, and perform cleanup on shutdown.
+
+*Part of the core `@varbyte/nest-worker` package — no additional installation required.*
+
+```ts
+import { Module, NestWorkerPlugin, createApplication } from '@varbyte/nest-worker';
+
+// Simple plugin
+const loggingPlugin: NestWorkerPlugin = {
+  name: 'request-logger',
+  onBeforeInit(container) {
+    console.log('[Plugin] Container ready');
+  },
+  onAfterInit(app) {
+    app.use(async (req) => {
+      console.log(`[Plugin] ${req.method} ${req.url}`);
+    });
+  },
+};
+
+// Plugin with config via static factory
+class ConfigPlugin implements NestWorkerPlugin {
+  name = 'config-provider';
+  constructor(private opts: { apiKey: string }) {}
+  static register(opts: { apiKey: string }) {
+    return new ConfigPlugin(opts);
+  }
+}
+
+@Module({
+  controllers: [MyController],
+  providers: [MyService],
+  plugins: [loggingPlugin, ConfigPlugin.register({ apiKey: process.env.API_KEY ?? '' })],
+})
+class AppModule {}
+
+const app = createApplication(AppModule);
+export default app.handler;
+```
+
+**Hook execution order:**
+
+1. `onBeforeInit(container)` — Register providers before module resolution
+2. Module registration and controller discovery
+3. `onAfterInit(app)` — Register global middleware, error filters
+4. `onBeforeDestroy(app)` — Cleanup on shutdown (LIFO order, can be async)
+
+**API reference:**
+
+| Export | Type | Description |
+|--------|------|-------------|
+| `NestWorkerPlugin` | Interface | Plugin contract with lifecycle hooks |
+| `PluginRegistry` | Class | Plugin management (register, find, remove, lifecycle execution) |
+| `PluginFactory` | Type | Helper type for typed plugin factories |
 
 ---
 

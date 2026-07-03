@@ -18,6 +18,7 @@
 - **Middlewares** — CORS, logger, rate limiting, bearer auth incluidos
 - **Excepciones HTTP** — `NotFoundException`, `BadRequestException`, etc.
 - **Swagger / OpenAPI** — documentación de API auto-generada con decoradores `@ApiModel()` y `@Prop()`, servida vía Swagger UI con Basic Auth opcional
+- **Sistema de Plugins** — extiende el contenedor DI con providers personalizados mediante hooks de ciclo de vida `NestWorkerPlugin` (`onBeforeInit`, `onAfterInit`, `onBeforeDestroy`)
 - **Cero dependencias en runtime** — solo `reflect-metadata`
 - **Protección contra SQL Injection** — todos los identificadores se sanitizan automáticamente
 
@@ -835,6 +836,220 @@ wrangler deploy
 # Secretos
 wrangler secret put API_SECRET
 ```
+
+---
+
+## Paquetes del Ecosistema
+
+Adicionales al núcleo del framework, los siguientes paquetes extienden nest-worker
+con middlewares listos para producción en caché, autenticación y límite de tasa.
+
+---
+
+### @varbyte/nest-worker-cache
+
+Almacena respuestas en caché en el edge usando **Cloudflare Cache API** (sin costo
+adicional) o **KV** (almacenamiento persistente con TTL personalizable).
+
+```bash
+npm install @varbyte/nest-worker-cache
+```
+
+```ts
+import { cacheMiddleware, withCache, invalidateCache } from '@varbyte/nest-worker-cache';
+import { createApplication, Controller, Get, UseMiddleware } from '@varbyte/nest-worker';
+
+// Global — cachear todas las respuestas por 1 hora vía Cache API
+const app = createApplication(AppModule);
+app.use(cacheMiddleware({ ttl: 3600 }));
+
+// Por ruta con backend KV
+@Controller('products')
+export class ProductsController {
+  @Get()
+  @UseMiddleware(cacheMiddleware({
+    ttl: 60,
+    storage: 'kv',
+    kvBinding: 'PRODUCTS_CACHE',
+  }))
+  async getAll() { return { data: 'cached response' }; }
+}
+
+// Invalidación manual
+await invalidateCache(env, '/products/123', 'kv', 'PRODUCTS_CACHE');
+```
+
+| Opción | Tipo | Por defecto | Descripción |
+|--------|------|-------------|-------------|
+| `ttl` | `number` | `3600` | Tiempo de vida en segundos |
+| `storage` | `'cache-api' \| 'kv'` | `'cache-api'` | Estrategia de almacenamiento |
+| `kvBinding` | `string` | — | Nombre del binding KV (requerido cuando `storage: 'kv'`) |
+| `staleWhileRevalidate` | `boolean` | `false` | Servir datos obsoletos mientras se obtiene contenido fresco |
+
+---
+
+### @varbyte/nest-worker-auth
+
+Autentica peticiones con **JWT**, **Cloudflare Access** o **API keys**.
+Usa Web Crypto API — cero dependencias externas.
+
+```bash
+npm install @varbyte/nest-worker-auth
+```
+
+```ts
+import { AuthGuard, getAuthUser } from '@varbyte/nest-worker-auth';
+import { Controller, Get, Req, UseMiddleware } from '@varbyte/nest-worker';
+
+// Autenticación JWT
+@Controller()
+class ProfileController {
+  @Get('/profile')
+  @UseMiddleware(AuthGuard.jwt({ secret: process.env.JWT_SECRET }))
+  getProfile(@Req() req: Request) {
+    const user = getAuthUser(req);
+    return { user };
+  }
+}
+
+// Cloudflare Access
+@Get('/admin')
+@UseMiddleware(AuthGuard.cfAccess({
+  teamDomain: 'my-team.cloudflareaccess.com',
+  audience: '12a345b6c7d8e9f0a1b2c3d4e5f6a7b8',
+}))
+getAdmin(@Req() req: Request) { return { admin: getAuthUser(req) }; }
+
+// API Key
+@UseMiddleware(AuthGuard.apiKey({ keyEnvKey: 'API_KEY' }))
+
+// Multi-estrategia (modo any)
+@UseMiddleware(AuthGuard({
+  strategies: [
+    { strategy: 'jwt', secretEnvKey: 'JWT_SECRET' },
+    { strategy: 'api-key', keyEnvKey: 'API_KEY' },
+  ],
+  mode: 'any',
+}))
+```
+
+| Estrategia | Guard | Descripción |
+|------------|-------|-------------|
+| JWT | `AuthGuard.jwt()` | HS256, RS256, ES256 con validación de issuer/audience |
+| Cloudflare Access | `AuthGuard.cfAccess()` | Obtiene JWKS del team domain, cachea llaves por 1h |
+| API Key | `AuthGuard.apiKey()` | Autenticación por header con clave estática, env binding o claves rotativas |
+| Multi | `AuthGuard()` | Combina estrategias con modo `any` o `all` |
+
+El usuario autenticado está disponible vía `getAuthUser(req)` e incluye:
+`id`, `name`, `email`, `roles`, claims `raw` y el nombre de la `strategy`.
+
+---
+
+### @varbyte/nest-worker-rate-limit
+
+Protege tus APIs con límites de tasa configurables. Soporta almacenamiento
+**en memoria** (desarrollo) y **KV** (producción).
+
+```bash
+npm install @varbyte/nest-worker-rate-limit
+```
+
+```ts
+import { RateLimitGuard } from '@varbyte/nest-worker-rate-limit';
+import { Controller, Get, UseMiddleware, createApplication } from '@varbyte/nest-worker';
+
+// Por ruta (en memoria, desarrollo)
+@Controller()
+class ApiController {
+  @Get('/api')
+  @UseMiddleware(RateLimitGuard({ windowMs: 60_000, max: 100 }))
+  getData() { return { ok: true }; }
+}
+
+// Global (KV, producción)
+const app = createApplication(AppModule);
+app.use(RateLimitGuard({
+  max: 1000,
+  storage: 'kv',
+  kvBinding: 'RATE_LIMIT',
+}));
+export default app.handler;
+```
+
+| Opción | Tipo | Por defecto | Descripción |
+|--------|------|-------------|-------------|
+| `windowMs` | `number` | `60_000` | Ventana de tiempo en milisegundos |
+| `max` | `number` | `100` | Máximo de peticiones por ventana |
+| `storage` | `'memory' \| 'kv'` | `'memory'` | Almacenamiento backend |
+| `kvBinding` | `string` | — | Nombre del binding KV (requerido cuando `storage: 'kv'`) |
+| `statusCode` | `number` | `429` | Código de respuesta cuando se excede el límite |
+| `message` | `string \| object` | `'Too Many Requests'` | Cuerpo de la respuesta |
+| `keyExtractor` | `(req) => string` | Basado en IP | Clave personalizada para el límite de tasa |
+
+Headers de respuesta: `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`,
+`X-RateLimit-Reset`.
+
+---
+
+### Sistema de Plugins
+
+Extiende el contenedor DI y el ciclo de vida de la aplicación con plugins.
+Los plugins pueden registrar proveedores antes de la inicialización del módulo,
+agregar middlewares globales después de la inicialización y realizar limpieza
+en el apagado.
+
+*Parte del paquete principal `@varbyte/nest-worker` — no requiere instalación adicional.*
+
+```ts
+import { Module, NestWorkerPlugin, createApplication } from '@varbyte/nest-worker';
+
+// Plugin simple
+const loggingPlugin: NestWorkerPlugin = {
+  name: 'request-logger',
+  onBeforeInit(container) {
+    console.log('[Plugin] Container ready');
+  },
+  onAfterInit(app) {
+    app.use(async (req) => {
+      console.log(`[Plugin] ${req.method} ${req.url}`);
+    });
+  },
+};
+
+// Plugin con configuración vía factory estática
+class ConfigPlugin implements NestWorkerPlugin {
+  name = 'config-provider';
+  constructor(private opts: { apiKey: string }) {}
+  static register(opts: { apiKey: string }) {
+    return new ConfigPlugin(opts);
+  }
+}
+
+@Module({
+  controllers: [MyController],
+  providers: [MyService],
+  plugins: [loggingPlugin, ConfigPlugin.register({ apiKey: process.env.API_KEY ?? '' })],
+})
+class AppModule {}
+
+const app = createApplication(AppModule);
+export default app.handler;
+```
+
+**Orden de ejecución de hooks:**
+
+1. `onBeforeInit(container)` — Registrar proveedores antes de la resolución del módulo
+2. Registro del módulo y descubrimiento de controladores
+3. `onAfterInit(app)` — Registrar middlewares globales, filtros de error
+4. `onBeforeDestroy(app)` — Limpieza al apagar (orden LIFO, puede ser asíncrono)
+
+**Referencia de API:**
+
+| Exportación | Tipo | Descripción |
+|------------|------|-------------|
+| `NestWorkerPlugin` | Interface | Contrato del plugin con hooks del ciclo de vida |
+| `PluginRegistry` | Class | Gestión de plugins (registrar, buscar, eliminar, ejecutar ciclo de vida) |
+| `PluginFactory` | Type | Tipo auxiliar para factories tipadas de plugins |
 
 ---
 
