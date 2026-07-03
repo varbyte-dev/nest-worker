@@ -341,7 +341,7 @@ function createResourceCommand(): Command {
       {
         rel: `${relDir}/${fileName(info, "repository.ts")}`,
         abs: resolve(dir, fileName(info, "repository.ts")),
-        content: buildRepositoryTemplate(info),
+        content: buildResourceRepositoryTemplate(info),
       },
       {
         rel: `${relDir}/${fileName(info, "model.ts")}`,
@@ -538,6 +538,24 @@ export class ${info.pascal}Service {
     await this.findById(db, id);
     await this.getRepo(db).delete(id);
     return { message: \`${entityName} #\${id} deleted\` };
+  }
+}
+`;
+}
+
+function buildResourceRepositoryTemplate(info: NameInfo): string {
+  const tableName = pluralKebab(info).replace(/-/g, "_");
+  const className = `${info.pascal}Repository`;
+  const entityName = info.pascal;
+
+  return `import type { D1Database } from '@varbyte/nest-worker';
+import { D1Repository, Injectable } from '@varbyte/nest-worker';
+import type { ${entityName} } from './${info.kebab}.model.js';
+
+@Injectable()
+export class ${className} extends D1Repository<${entityName}> {
+  constructor(protected readonly db: D1Database) {
+    super(db, '${tableName}');
   }
 }
 `;
