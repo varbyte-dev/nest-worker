@@ -456,12 +456,12 @@ export class AssetsController {
 
 ## Swagger / OpenAPI
 
-Auto-generate API documentation with Swagger UI, protected by Basic Auth.
+Auto-generate interactive API documentation with Swagger UI, protected by Basic Auth.
 
 ### Setup
 
 ```ts
-import { createApplication } from '@varbyte/nest-worker';
+import { createApplication, SecuritySchemes } from '@varbyte/nest-worker';
 import type { SwaggerOptions } from '@varbyte/nest-worker';
 
 const app = createApplication(AppModule);
@@ -470,9 +470,13 @@ app.useSwagger({
   title: 'My API',
   version: '1.0.0',
   description: 'API documentation',
+  path: '/docs',              // Swagger UI served here
   auth: {
     username: 'admin',
-    password: 'swagger-secret',  // Use env var in production
+    password: 'swagger-secret',  // Protects the UI with Basic Auth
+  },
+  securitySchemes: {
+    bearerAuth: SecuritySchemes.bearerJwt(), // Adds 🔒 Authorize button
   },
   servers: [
     { url: 'https://api.example.com', description: 'Production' },
@@ -480,7 +484,7 @@ app.useSwagger({
 } satisfies SwaggerOptions);
 ```
 
-Visit `/docs` in your browser to view the Swagger UI.
+Visit `/docs` in your browser. The raw OpenAPI JSON spec is at `/docs/json`.
 
 ### Decorators
 
@@ -491,7 +495,76 @@ Visit `/docs` in your browser to view the Swagger UI.
 | `@ApiOperation({ summary, description })` | Method | Describes an endpoint operation |
 | `@ApiResponse({ status, description })` | Method | Describes an endpoint response |
 | `@ApiTags(name)` | Class | Groups endpoints by tag |
-| `@ApiBody({ description, type })` | Method | Describes the request body |
+| `@ApiBody({ description, schema })` | Method | Describes the request body |
+| `@ApiSecurity(scheme)` | Class/Method | Marks route(s) as protected (shows 🔒 in UI) |
+
+### Bearer Token Auth (🔒 Lock Icon)
+
+To show the **Authorize** button and lock icons on protected endpoints:
+
+```ts
+// 1. Declare the scheme in SwaggerOptions
+app.useSwagger({
+  securitySchemes: {
+    bearerAuth: SecuritySchemes.bearerJwt(),
+  },
+});
+```
+
+```ts
+import { ApiSecurity, ApiTags, Controller, Get, Req, UseMiddleware } from '@varbyte/nest-worker';
+import { AuthGuard, getAuthUser } from '@varbyte/nest-worker-auth';
+
+// 2a. Protect the whole controller
+@ApiSecurity('bearerAuth')
+@ApiTags('Profile')
+@Controller('profile')
+export class ProfileController {
+  @Get()
+  me(@Req() req: Request) {
+    return getAuthUser(req);
+  }
+}
+
+// 2b. Or protect individual routes
+@ApiTags('Users')
+@Controller('users')
+export class UsersController {
+  @Get()               // public — no lock
+  list() { return []; }
+
+  @Get('me')
+  @ApiSecurity('bearerAuth')   // 🔒 protected
+  @UseMiddleware(AuthGuard.jwt({ strategy: 'jwt', secretEnvKey: 'JWT_SECRET' }))
+  me(@Req() req: Request) {
+    return getAuthUser(req);
+  }
+}
+```
+
+**In Swagger UI:**
+1. Click **Authorize** (top-right green button)
+2. Enter your Bearer token (without `Bearer ` prefix)
+3. All 🔒 endpoints automatically include the token
+
+### Available `SecuritySchemes` helpers
+
+```ts
+import { SecuritySchemes } from '@varbyte/nest-worker';
+
+// HTTP Bearer JWT (most common)
+SecuritySchemes.bearerJwt(description?)
+
+// API Key in a header
+SecuritySchemes.apiKey({ name?, description? })
+
+// HTTP Basic Auth
+SecuritySchemes.basicAuth(description?)
+
+// Or provide a raw SecuritySchemeObject
+import type { SecuritySchemeObject } from '@varbyte/nest-worker';
+const custom: SecuritySchemeObject = { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' };
+```
 
 ---
 

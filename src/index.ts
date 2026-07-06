@@ -128,6 +128,8 @@ export {
   ApiBody,
   ApiResponse,
   ApiTags,
+  ApiSecurity,
+  SecuritySchemes,
   buildOpenApiSpec,
   createSwaggerMiddleware,
 } from "./extras/swagger";
@@ -137,6 +139,7 @@ export type {
   ApiOperationOptions,
   ApiBodyOptions,
   ApiResponseOptions,
+  SecuritySchemeObject,
   SwaggerOptions,
 } from "./extras/swagger";
 
