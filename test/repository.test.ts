@@ -26,7 +26,10 @@ describe('D1Repository', () => {
     });
 
     it('should sanitize column names in create', async () => {
-      const { db, statements } = createMockD1();
+      // firstResult needed so create() does not throw after the SELECT-back
+      const { db, statements } = createMockD1({
+        firstResult: { id: 1, name: 'Alice', email: 'a@b.com', role: 'user' },
+      });
       const repo = new D1Repository<User>(db, 'users');
       await repo.create({ name: 'Alice', email: 'a@b.com', role: 'user' } as any);
 
@@ -92,6 +95,76 @@ describe('D1Repository', () => {
 
       expect(statements[0].sql).toBe('SELECT 1');
       expect(statements[1].sql).toBe('SELECT 2');
+    });
+  });
+
+  describe('create() return value', () => {
+    it('should return the created record', async () => {
+      const mockUser: User = { id: 1, name: 'Alice', email: 'a@b.com', role: 'user' };
+      const { db, statements } = createMockD1({ firstResult: mockUser });
+      const repo = new D1Repository<User>(db, 'users');
+
+      const result = await repo.create({ name: 'Alice', email: 'a@b.com', role: 'user' });
+
+      expect(result).toEqual(mockUser);
+      // Verify the SELECT-back uses last_row_id from the INSERT result
+      expect(statements[1].sql).toContain('SELECT * FROM users');
+      expect(statements[1].sql).toContain('WHERE id = ?');
+      expect(statements[1].bindings).toEqual([1]);
+    });
+
+    it('should throw when data is empty', async () => {
+      const { db } = createMockD1();
+      const repo = new D1Repository<User>(db, 'users');
+
+      await expect(repo.create({} as any)).rejects.toThrow('Cannot insert empty data');
+    });
+  });
+
+  describe('update() return value', () => {
+    it('should return the updated record', async () => {
+      const mockUser: User = { id: 1, name: 'Bob', email: 'a@b.com', role: 'user' };
+      const { db } = createMockD1({ firstResult: mockUser });
+      const repo = new D1Repository<User>(db, 'users');
+
+      const result = await repo.update(1, { name: 'Bob' });
+
+      expect(result).toEqual(mockUser);
+    });
+
+    it('should return null when row does not exist', async () => {
+      const { db } = createMockD1();
+      const repo = new D1Repository<User>(db, 'users');
+
+      const result = await repo.update(999, { name: 'Ghost' });
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('custom primaryKey (H13)', () => {
+    it('findById should use custom primary key column', async () => {
+      const { db, statements } = createMockD1();
+      const repo = new D1Repository<User>(db, 'users', 'user_id');
+      await repo.findById('abc');
+
+      expect(statements[0].sql).toContain('WHERE user_id = ?');
+      expect(statements[0].bindings).toEqual(['abc']);
+    });
+
+    it('delete should use custom primary key column', async () => {
+      const { db, statements } = createMockD1();
+      const repo = new D1Repository<User>(db, 'users', 'user_id');
+      await repo.delete('abc');
+
+      expect(statements[0].sql).toContain('WHERE user_id = ?');
+      expect(statements[0].bindings).toEqual(['abc']);
+    });
+
+    it('should reject invalid custom primary key names', () => {
+      const { db } = createMockD1();
+      expect(() => new D1Repository(db, 'users', 'bad-key')).toThrow();
+      expect(() => new D1Repository(db, 'users', "key'inject")).toThrow();
     });
   });
 });

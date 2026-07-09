@@ -29,14 +29,14 @@ export class UsersService {
   }
 
   async create(db: D1Database, data: Omit<User, 'id' | 'created_at'>): Promise<{ id: number; message: string }> {
-    const result = await this.getRepo(db).create(data as any);
-    return { id: result.meta.last_row_id!, message: 'User created' };
+    const user = await this.getRepo(db).create(data as any);
+    return { id: user.id, message: 'User created' };
   }
 
   async update(db: D1Database, id: number, data: Partial<Omit<User, 'id' | 'created_at'>>): Promise<User> {
-    await this.findById(db, id);
-    await this.getRepo(db).update(id, data);
-    return this.findById(db, id);
+    const updated = await this.getRepo(db).update(id, data);
+    if (!updated) throw new NotFoundException(`User #${id} not found`);
+    return updated;
   }
 
   async delete(db: D1Database, id: number): Promise<{ message: string }> {

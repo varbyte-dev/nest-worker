@@ -542,14 +542,14 @@ export class ${info.pascal}Service {
   }
 
   async create(db: D1Database, data: Record<string, unknown>): Promise<{ id: number; message: string }> {
-    const result = await this.getRepo(db).create(data as Omit<${entityName}, 'id'>);
-    return { id: result.meta.last_row_id!, message: '${entityName} created' };
+    const item = await this.getRepo(db).create(data as Omit<${entityName}, 'id'>);
+    return { id: item.id as number, message: '${entityName} created' };
   }
 
   async update(db: D1Database, id: number, data: Record<string, unknown>): Promise<${entityName}> {
-    await this.findById(db, id);
-    await this.getRepo(db).update(id, data as Partial<Omit<${entityName}, 'id'>>);
-    return this.findById(db, id);
+    const updated = await this.getRepo(db).update(id, data as Partial<Omit<${entityName}, 'id'>>);
+    if (!updated) throw new NotFoundException(\`${entityName} #\${id} not found\`);
+    return updated;
   }
 
   async delete(db: D1Database, id: number): Promise<{ message: string }> {
