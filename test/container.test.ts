@@ -204,4 +204,235 @@ describe("Container", () => {
       );
     });
   });
+
+  describe("circular dependency detection (H7)", () => {
+    it("should detect A → B → A circular dependency with readable chain", () => {
+      class ServiceA {}
+      class ServiceB {}
+      Reflect.defineMetadata("__deps__", [ServiceB], ServiceA);
+      Reflect.defineMetadata("__deps__", [ServiceA], ServiceB);
+
+      const container = new Container();
+      container.register(createModule({ providers: [ServiceA, ServiceB] }));
+
+      expect(() => container.resolve(ServiceA)).toThrow(
+        "Circular dependency detected: ServiceA → ServiceB → ServiceA",
+      );
+    });
+
+    it("should detect self-dependency A → A", () => {
+      class SelfService {}
+      Reflect.defineMetadata("__deps__", [SelfService], SelfService);
+
+      const container = new Container();
+      container.register(createModule({ providers: [SelfService] }));
+
+      expect(() => container.resolve(SelfService)).toThrow(
+        "Circular dependency detected: SelfService → SelfService",
+      );
+    });
+
+    it("should clean up resolution stack after circular dependency error", () => {
+      class ServiceA {}
+      class ServiceB {}
+      class ServiceC {}
+      Reflect.defineMetadata("__deps__", [ServiceB], ServiceA);
+      Reflect.defineMetadata("__deps__", [ServiceA], ServiceB);
+
+      const container = new Container();
+      container.register(
+        createModule({ providers: [ServiceA, ServiceB, ServiceC] }),
+      );
+
+      // First resolution throws due to circular dep
+      expect(() => container.resolve(ServiceA)).toThrow(
+        "Circular dependency detected",
+      );
+
+      // Stack is cleaned up — subsequent valid resolution works
+      expect(container.resolve(ServiceC)).toBeInstanceOf(ServiceC);
+    });
+
+    it("should include resolution chain in No provider found error", () => {
+      class ServiceA {}
+      Reflect.defineMetadata("__deps__", ["MISSING_SERVICE"], ServiceA);
+
+      const container = new Container();
+      container.register(createModule({ providers: [ServiceA] }));
+
+      expect(() => container.resolve(ServiceA)).toThrow(
+        "No provider found for token: MISSING_SERVICE (resolution chain: ServiceA → MISSING_SERVICE)",
+      );
+    });
+  });
+
+  describe("module re-exports (H8)", () => {
+    it("should resolve token re-exported through an intermediate module", () => {
+      class DbService {
+        getDb() {
+          return "db";
+        }
+      }
+
+      const DatabaseModule = createModule({
+        providers: [DbService],
+        exports: [DbService],
+      });
+
+      // SharedModule imports Database and re-exports DbService by token
+      const SharedModule = createModule({
+        imports: [DatabaseModule],
+        exports: [DbService],
+      });
+
+      const AppModule = createModule({ imports: [SharedModule] });
+
+      const container = new Container();
+      container.register(AppModule);
+
+      const resolved = container.resolve(DbService) as DbService;
+      expect(resolved).toBeInstanceOf(DbService);
+      expect(resolved.getDb()).toBe("db");
+    });
+
+    it("should resolve providers when an entire module is re-exported", () => {
+      class DbService {
+        getDb() {
+          return "db";
+        }
+      }
+
+      const DatabaseModule = createModule({
+        providers: [DbService],
+        exports: [DbService],
+      });
+
+      // SharedModule re-exports DatabaseModule entirely
+      const SharedModule = createModule({
+        imports: [DatabaseModule],
+        exports: [DatabaseModule],
+      });
+
+      const AppModule = createModule({ imports: [SharedModule] });
+
+      const container = new Container();
+      container.register(AppModule);
+
+      const resolved = container.resolve(DbService) as DbService;
+      expect(resolved).toBeInstanceOf(DbService);
+      expect(resolved.getDb()).toBe("db");
+    });
+
+    it("should not expose non-exported providers even when module is re-exported", () => {
+      class DbService {}
+      class InternalService {}
+
+      // DatabaseModule exports only DbService; InternalService is private
+      const DatabaseModule = createModule({
+        providers: [DbService, InternalService],
+        exports: [DbService],
+      });
+
+      const SharedModule = createModule({
+        imports: [DatabaseModule],
+        exports: [DatabaseModule],
+      });
+
+      const AppModule = createModule({ imports: [SharedModule] });
+
+      const container = new Container();
+      container.register(AppModule);
+
+      expect(container.resolve(DbService)).toBeInstanceOf(DbService);
+      expect(() => container.resolve(InternalService)).toThrow(
+        "No provider found",
+      );
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  //  rootContext fallback
+  // ═══════════════════════════════════════════════════════════════════
+
+  describe("rootContext fallback", () => {
+    /**
+     * Scenario: ControllerA lives in ModuleA. ServiceB lives in ModuleB.
+     * ModuleA does NOT import ModuleB. AppModule imports both.
+     * ModuleB exports ServiceB.
+     *
+     * Expected: resolveController(ControllerA) finds ServiceB via the
+     * rootContext fallback, because AppModule imports ModuleB which exports it.
+     */
+    it("resolves a dependency from a sibling module via rootContext fallback", () => {
+      @Injectable()
+      class ServiceB {
+        greet() { return "from ServiceB"; }
+      }
+
+      const CTRL_DEPS = "__deps__";
+      class ControllerA {
+        constructor(public readonly svcB: ServiceB) {}
+      }
+      Reflect.defineMetadata(CTRL_DEPS, [ServiceB], ControllerA);
+
+      const ModuleA = createModule({ controllers: [ControllerA] });
+      const ModuleB = createModule({
+        providers: [ServiceB],
+        exports: [ServiceB],
+      });
+      const AppModule = createModule({ imports: [ModuleA, ModuleB] });
+
+      const container = new Container();
+      container.register(AppModule);
+
+      const ctrl = container.resolveController(ControllerA);
+      expect(ctrl).toBeInstanceOf(ControllerA);
+      expect(ctrl.svcB).toBeInstanceOf(ServiceB);
+      expect(ctrl.svcB.greet()).toBe("from ServiceB");
+    });
+
+    it("still throws when the provider is not exported anywhere", () => {
+      @Injectable()
+      class PrivateService {}
+
+      class ControllerX {
+        constructor(public readonly svc: PrivateService) {}
+      }
+      Reflect.defineMetadata("__deps__", [PrivateService], ControllerX);
+
+      // PrivateService is registered but NOT exported
+      const ModulePrivate = createModule({
+        providers: [PrivateService],
+        exports: [],           // <-- not exported
+      });
+      const ModuleX = createModule({ controllers: [ControllerX] });
+      const AppModule = createModule({ imports: [ModuleX, ModulePrivate] });
+
+      const container = new Container();
+      container.register(AppModule);
+
+      expect(() => container.resolveController(ControllerX)).toThrow(
+        "No provider found",
+      );
+    });
+
+    it("does not cause infinite recursion when already searching rootContext", () => {
+      @Injectable()
+      class SomeService {}
+
+      // SomeService is not registered anywhere
+      class ControllerZ {
+        constructor(public svc: SomeService) {}
+      }
+      Reflect.defineMetadata("__deps__", [SomeService], ControllerZ);
+
+      const AppModule = createModule({ controllers: [ControllerZ] });
+      const container = new Container();
+      container.register(AppModule);
+
+      expect(() => container.resolveController(ControllerZ)).toThrow(
+        "No provider found",
+      );
+    });
+  });
 });

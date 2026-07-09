@@ -49,3 +49,6 @@ jobs:
 
       - name: Build CLI
         run: pnpm --filter @varbyte/nest-worker-cli build
+
+      - name: Validate package
+        run: pnpm --filter @varbyte/nest-worker exec publint --strict || true

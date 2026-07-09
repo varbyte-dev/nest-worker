@@ -19,8 +19,7 @@ const HTTP_CODE_KEY = "__http_code__";
 const PIPES_KEY = "__pipes__";
 
 export class Router {
-  private routes: Array<{
-    method: HttpMethod;
+  private routesByMethod = new Map<HttpMethod, Array<{
     pattern: URLPattern;
     rawPath: string;
     handler: (
@@ -29,7 +28,7 @@ export class Router {
       ctx: ExecutionContext,
       params: Record<string, string>,
     ) => Promise<Response>;
-  }> = [];
+  }>>();
 
   constructor(
     private container: Container,
@@ -54,17 +53,20 @@ export class Router {
           `${MIDDLEWARES_KEY}:${route.handlerName}`,
           ctrlClass,
         ) || [];
-      const statusCode =
-        Reflect.getMetadata(
-          `${HTTP_CODE_KEY}:${route.handlerName}`,
-          ctrlClass,
-        ) || 200;
+      // Explicit @HttpCode decorator value (undefined if not set)
+      const explicitCode: number | undefined =
+        Reflect.getMetadata(`${HTTP_CODE_KEY}:${route.handlerName}`, ctrlClass) ||
+        undefined;
+      // POST defaults to 201; all other verbs default to 200
+      const defaultCode = route.method === "POST" ? 201 : 200;
+      const statusCode = explicitCode ?? defaultCode;
+      const hasExplicitCode = explicitCode !== undefined;
       const routePipes: PipeFn[] =
         Reflect.getMetadata(`${PIPES_KEY}:${route.handlerName}`, ctrlClass) ||
         [];
 
-      this.routes.push({
-        method: route.method,
+      const list = this.routesByMethod.get(route.method) ?? [];
+      list.push({
         pattern,
         rawPath: fullPath,
         handler: async (req, env, ctx, pathParams) => {
@@ -99,9 +101,10 @@ export class Router {
             },
           );
           const result = await instance[route.handlerName](...pipedArgs);
-          return toResponse(result, statusCode);
+          return toResponse(result, statusCode, hasExplicitCode);
         },
       });
+      this.routesByMethod.set(route.method, list);
     }
   }
 
@@ -113,8 +116,9 @@ export class Router {
     const url = new URL(request.url);
     const method = request.method.toUpperCase() as HttpMethod;
 
-    for (const route of this.routes) {
-      if (!methodMatches(route.method, method)) continue;
+    const lookupMethod = method === 'HEAD' ? 'GET' : method;
+    const candidates = this.routesByMethod.get(lookupMethod) ?? [];
+    for (const route of candidates) {
       const match = route.pattern.exec({ pathname: url.pathname });
       if (match) {
         const params = match.pathname.groups as Record<string, string>;
@@ -171,12 +175,9 @@ function normalizePath(path: string): string {
   return path.replace(/\/+/g, "/").replace(/\/$/, "") || "/";
 }
 
-function methodMatches(routeMethod: HttpMethod, requestMethod: HttpMethod) {
-  return (
-    routeMethod === requestMethod ||
-    (routeMethod === "GET" && requestMethod === "HEAD")
-  );
-}
+// Sentinel distinguishes "body not yet parsed" from falsy parsed values (false, 0, null).
+// This prevents re-reading the request stream when the JSON body is falsy.
+const BODY_UNSET = Symbol('BODY_UNSET');
 
 async function resolveHandlerArgs(
   req: Request,
@@ -187,7 +188,7 @@ async function resolveHandlerArgs(
   const args: unknown[] = [];
   if (!paramsMeta.length) return args;
 
-  let parsedBody: unknown = undefined;
+  let parsedBody: unknown = BODY_UNSET;
   const url = new URL(req.url); // cache: created once for all params
 
   for (const meta of paramsMeta) {
@@ -204,9 +205,9 @@ async function resolveHandlerArgs(
         value = meta.key ? env[meta.key] : env["DB"];
         break;
       case "body": {
-        if (!parsedBody) {
+        if (parsedBody === BODY_UNSET) {
           if (req.body === null) {
-            parsedBody = {};
+            parsedBody = {}; // no body at all → empty object
           } else {
             try {
               parsedBody = await req.json();
@@ -215,9 +216,19 @@ async function resolveHandlerArgs(
             }
           }
         }
-        value = meta.key
-          ? (parsedBody as Record<string, unknown>)[meta.key]
-          : parsedBody;
+        if (meta.key) {
+          if (Array.isArray(parsedBody)) {
+            throw new BadRequestException(
+              `Cannot use @Body('${meta.key}') with an array body — use @Body() to receive the full array`,
+            );
+          }
+          value =
+            parsedBody !== null && typeof parsedBody === "object"
+              ? (parsedBody as Record<string, unknown>)[meta.key]
+              : undefined;
+        } else {
+          value = parsedBody;
+        }
         break;
       }
       case "param":
@@ -257,10 +268,15 @@ async function applyPipes(
   return currentArgs;
 }
 
-function toResponse(value: unknown, status = 200): Response {
+function toResponse(
+  value: unknown,
+  status = 200,
+  hasExplicitStatus = false,
+): Response {
   if (value instanceof Response) return value;
+  // undefined/null: use explicit status if set, otherwise 204 No Content
   if (value === undefined || value === null)
-    return new Response(null, { status: 204 });
+    return new Response(null, { status: hasExplicitStatus ? status : 204 });
   if (typeof value === "string")
     return new Response(value, {
       status,

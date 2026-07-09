@@ -14,12 +14,15 @@ export class D1Repository<
   T extends Record<string, unknown> = Record<string, unknown>,
 > {
   private readonly safeTableName: string;
+  private readonly safePrimaryKey: string;
 
   constructor(
     protected readonly db: D1Database,
     protected readonly tableName: string,
+    protected readonly primaryKey: string = "id",
   ) {
     this.safeTableName = sanitizeIdentifier(tableName);
+    this.safePrimaryKey = sanitizeIdentifier(primaryKey);
   }
 
   /** Find all rows */
@@ -30,10 +33,12 @@ export class D1Repository<
     return result.results || [];
   }
 
-  /** Find one by primary key (id) */
+  /** Find one by primary key */
   async findById(id: number | string): Promise<T | null> {
     return this.db
-      .prepare(`SELECT * FROM ${this.safeTableName} WHERE id = ?`)
+      .prepare(
+        `SELECT * FROM ${this.safeTableName} WHERE ${this.safePrimaryKey} = ?`,
+      )
       .bind(id)
       .first<T>();
   }
@@ -70,39 +75,73 @@ export class D1Repository<
   }
 
   /** Insert a row and return the created record */
-  async create(data: Omit<T, "id">): Promise<D1Result<T>> {
+  async create(data: Omit<T, "id">): Promise<T> {
+    if (Object.keys(data).length === 0) {
+      throw new Error("Cannot insert empty data");
+    }
     const keys = Object.keys(data).map(sanitizeIdentifier);
     const placeholders = keys.map(() => "?").join(", ");
     const values = Object.values(data);
-    return this.db
+    const result = await this.db
       .prepare(
         `INSERT INTO ${this.safeTableName} (${keys.join(", ")}) VALUES (${placeholders})`,
       )
       .bind(...values)
       .run<T>();
+
+    const lastRowId = result.meta.last_row_id;
+    if (lastRowId == null) {
+      throw new Error("Insert did not return a row ID");
+    }
+
+    const row = await this.db
+      .prepare(
+        `SELECT * FROM ${this.safeTableName} WHERE ${this.safePrimaryKey} = ?`,
+      )
+      .bind(lastRowId)
+      .first<T>();
+
+    if (!row) {
+      throw new Error(
+        `Insert succeeded but row with ${this.safePrimaryKey} = ${lastRowId} not found`,
+      );
+    }
+
+    return row;
   }
 
-  /** Update a row by id */
+  /** Update a row by primary key and return the updated record, or null if not found */
   async update(
     id: number | string,
     data: Partial<Omit<T, "id">>,
-  ): Promise<D1Result<T>> {
+  ): Promise<T | null> {
     const keys = Object.keys(data);
     if (!keys.length) throw new Error("No fields to update");
     const setClause = keys
       .map((k) => `${sanitizeIdentifier(k)} = ?`)
       .join(", ");
     const values = [...Object.values(data), id];
-    return this.db
-      .prepare(`UPDATE ${this.safeTableName} SET ${setClause} WHERE id = ?`)
+    await this.db
+      .prepare(
+        `UPDATE ${this.safeTableName} SET ${setClause} WHERE ${this.safePrimaryKey} = ?`,
+      )
       .bind(...values)
       .run<T>();
+
+    return this.db
+      .prepare(
+        `SELECT * FROM ${this.safeTableName} WHERE ${this.safePrimaryKey} = ?`,
+      )
+      .bind(id)
+      .first<T>();
   }
 
-  /** Delete a row by id */
+  /** Delete a row by primary key */
   async delete(id: number | string): Promise<D1Result<T>> {
     return this.db
-      .prepare(`DELETE FROM ${this.safeTableName} WHERE id = ?`)
+      .prepare(
+        `DELETE FROM ${this.safeTableName} WHERE ${this.safePrimaryKey} = ?`,
+      )
       .bind(id)
       .run<T>();
   }

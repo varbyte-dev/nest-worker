@@ -103,13 +103,49 @@ describe('QueryBuilder', () => {
       expect(statements[0].sql).toContain('ORDER BY created_at DESC');
     });
 
-    it('should build SELECT with LIMIT and OFFSET', async () => {
+    it('should build SELECT with LIMIT and OFFSET using parameterized bindings', async () => {
       const { db, statements } = createMockD1();
       const qb = new QueryBuilder(db, 'users');
       await qb.limit(10).offset(20).all();
 
-      expect(statements[0].sql).toContain('LIMIT 10');
-      expect(statements[0].sql).toContain('OFFSET 20');
+      // LIMIT and OFFSET must use ? bindings, not interpolation
+      expect(statements[0].sql).toContain('LIMIT ?');
+      expect(statements[0].sql).toContain('OFFSET ?');
+      expect(statements[0].bindings).toContain(10);
+      expect(statements[0].bindings).toContain(20);
+    });
+
+    it('should prepend LIMIT -1 when offset is set without limit', async () => {
+      const { db, statements } = createMockD1();
+      await new QueryBuilder(db, 'users').offset(5).all();
+      expect(statements[0].sql).toContain('LIMIT -1');
+      expect(statements[0].sql).toContain('OFFSET ?');
+      expect(statements[0].bindings).toContain(5);
+    });
+
+    it('should accept string numeric values for limit/offset (coercion)', async () => {
+      const { db, statements } = createMockD1();
+      await new QueryBuilder(db, 'users').limit('10' as any).all();
+      expect(statements[0].sql).toContain('LIMIT ?');
+      expect(statements[0].bindings).toContain(10);
+    });
+
+    it('should reject injection payloads, negatives, floats, NaN, and non-numerics in limit', () => {
+      const { db } = createMockD1();
+      const qb = () => new QueryBuilder(db, 'users');
+      expect(() => qb().limit(-1)).toThrow('limit()');
+      expect(() => qb().limit(1.5)).toThrow('limit()');
+      expect(() => qb().limit(NaN)).toThrow('limit()');
+      expect(() => qb().limit('1; DROP TABLE users' as any)).toThrow('limit()');
+    });
+
+    it('should reject invalid offset values', () => {
+      const { db } = createMockD1();
+      const qb = () => new QueryBuilder(db, 'users');
+      expect(() => qb().offset(-1)).toThrow('offset()');
+      expect(() => qb().offset(NaN)).toThrow('offset()');
+      expect(() => qb().offset(undefined as any)).toThrow('offset()');
+      expect(() => qb().offset(1.5)).toThrow('offset()');
     });
 
     it('should build COUNT query', async () => {

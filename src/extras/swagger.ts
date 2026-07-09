@@ -802,14 +802,14 @@ export function createSwaggerMiddleware(
   const specJson = JSON.stringify(spec);
   const uiHtml = swaggerUiHtml(jsonPath, spec.info.title);
 
-  return (req, env, ctx) => {
+  return async (req, env, ctx) => {
     const url = new URL(req.url);
 
     if (url.pathname !== uiPath && url.pathname !== jsonPath) {
       return; // Let other middlewares / router handle it
     }
 
-    // ── Basic Auth ──
+    // ── Basic Auth (timing-safe) ──
     if (options.auth) {
       const authHeader = req.headers.get("Authorization");
       if (!authHeader?.startsWith("Basic ")) {
@@ -823,19 +823,40 @@ export function createSwaggerMiddleware(
       try {
         decoded = atob(authHeader.slice(6));
       } catch {
-        return new Response("Forbidden", { status: 403 });
+        return new Response("Unauthorized", {
+          status: 401,
+          headers: { "WWW-Authenticate": 'Basic realm="Swagger UI"' },
+        });
       }
 
       const colonIdx = decoded.indexOf(":");
       if (colonIdx === -1) {
-        return new Response("Forbidden", { status: 403 });
+        return new Response("Unauthorized", {
+          status: 401,
+          headers: { "WWW-Authenticate": 'Basic realm="Swagger UI"' },
+        });
       }
 
       const user = decoded.slice(0, colonIdx);
       const pass = decoded.slice(colonIdx + 1);
 
-      if (user !== options.auth.username || pass !== options.auth.password) {
-        return new Response("Forbidden", { status: 403 });
+      // Timing-safe comparison prevents username/password enumeration
+      const enc = new TextEncoder();
+      const [uHash, eUHash, pHash, ePHash] = await Promise.all([
+        crypto.subtle.digest("SHA-256", enc.encode(user)),
+        crypto.subtle.digest("SHA-256", enc.encode(options.auth.username)),
+        crypto.subtle.digest("SHA-256", enc.encode(pass)),
+        crypto.subtle.digest("SHA-256", enc.encode(options.auth.password)),
+      ]);
+      const uv = new Uint8Array(uHash), eu = new Uint8Array(eUHash);
+      const pv = new Uint8Array(pHash), ep = new Uint8Array(ePHash);
+      let diff = 0;
+      for (let i = 0; i < uv.length; i++) diff |= (uv[i] ^ eu[i]) | (pv[i] ^ ep[i]);
+      if (diff !== 0) {
+        return new Response("Unauthorized", {
+          status: 401,
+          headers: { "WWW-Authenticate": 'Basic realm="Swagger UI"' },
+        });
       }
     }
 
