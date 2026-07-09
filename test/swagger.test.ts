@@ -476,7 +476,7 @@ describe("app.useSwagger() integration", () => {
     );
     expect(noAuth.status).toBe(401);
 
-    // With wrong credentials
+    // With wrong credentials — still 401 (RFC 9110: wrong credentials = 401, not 403)
     const wrongAuth = await app.handler.fetch(
       new Request("https://example.com/docs", {
         headers: {
@@ -486,7 +486,7 @@ describe("app.useSwagger() integration", () => {
       {},
       ctx,
     );
-    expect(wrongAuth.status).toBe(403);
+    expect(wrongAuth.status).toBe(401);
 
     // With correct credentials
     const goodAuth = await app.handler.fetch(

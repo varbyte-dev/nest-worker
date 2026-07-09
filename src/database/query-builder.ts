@@ -1,6 +1,20 @@
 import { D1Database, sanitizeIdentifier } from "../core/types";
 
 type OrderDirection = "ASC" | "DESC";
+
+/**
+ * Validates that a value is a non-negative integer (or a string that coerces to one).
+ * Rejects floats, negatives, NaN, Infinity, null, undefined, and objects.
+ */
+function assertNonNegativeInteger(n: unknown, name: string): number {
+  const num = Number(n);
+  if (!Number.isFinite(num) || !Number.isInteger(num) || num < 0) {
+    throw new Error(
+      `${name}() requires a non-negative integer, got: ${JSON.stringify(n)}`,
+    );
+  }
+  return num;
+}
 type ScalarOperator =
   | "="
   | "!="
@@ -133,12 +147,12 @@ export class QueryBuilder<T = Record<string, unknown>> {
   }
 
   limit(n: number): this {
-    this._limit = n;
+    this._limit = assertNonNegativeInteger(n, 'limit');
     return this;
   }
 
   offset(n: number): this {
-    this._offset = n;
+    this._offset = assertNonNegativeInteger(n, 'offset');
     return this;
   }
 
@@ -167,8 +181,19 @@ export class QueryBuilder<T = Record<string, unknown>> {
       sql += ` ORDER BY ${orders.join(", ")}`;
     }
 
-    if (this._limit !== undefined) sql += ` LIMIT ${this._limit}`;
-    if (this._offset !== undefined) sql += ` OFFSET ${this._offset}`;
+    // Use parameterized bindings for LIMIT/OFFSET to prevent SQL injection.
+    // SQLite requires LIMIT when OFFSET is present; -1 means "all rows".
+    if (this._limit !== undefined) {
+      sql += ` LIMIT ?`;
+      bindings.push(this._limit);
+    }
+    if (this._offset !== undefined) {
+      if (this._limit === undefined) {
+        sql += ` LIMIT -1`; // SQLite: OFFSET requires a preceding LIMIT
+      }
+      sql += ` OFFSET ?`;
+      bindings.push(this._offset);
+    }
 
     return { sql, bindings };
   }

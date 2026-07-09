@@ -124,14 +124,46 @@ export interface BearerAuthOptions {
   staticToken?: string;
 }
 
+/**
+ * Constant-time string comparison using SHA-256 digests.
+ * Prevents timing attacks by ensuring comparison time does not
+ * depend on how many characters match.
+ */
+async function timingSafeEqualStr(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const [hashA, hashB] = await Promise.all([
+    crypto.subtle.digest("SHA-256", enc.encode(a)),
+    crypto.subtle.digest("SHA-256", enc.encode(b)),
+  ]);
+  const va = new Uint8Array(hashA);
+  const vb = new Uint8Array(hashB);
+  let diff = 0;
+  for (let i = 0; i < va.length; i++) diff |= va[i] ^ vb[i];
+  return diff === 0;
+}
+
+/**
+ * Build a RFC-9110-compliant 401 Unauthorized response with WWW-Authenticate header.
+ * Both "missing header" and "invalid token" cases return 401, never 403.
+ */
+function bearerUnauthorized(errorCode = "invalid_token"): Response {
+  return new Response(
+    JSON.stringify({ error: "Unauthorized", statusCode: 401 }),
+    {
+      status: 401,
+      headers: {
+        "Content-Type": "application/json",
+        "WWW-Authenticate": `Bearer error="${errorCode}"`,
+      },
+    },
+  );
+}
+
 export function bearerAuth(options: BearerAuthOptions = {}): MiddlewareFn {
-  return (req, env, _ctx) => {
+  return async (req, env, _ctx) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
+      return bearerUnauthorized("missing_token");
     }
 
     const token = authHeader.slice(7);
@@ -139,11 +171,9 @@ export function bearerAuth(options: BearerAuthOptions = {}): MiddlewareFn {
       options.staticToken ||
       (options.tokenEnvKey ? (env[options.tokenEnvKey] as string) : null);
 
-    if (!expected || token !== expected) {
-      return new Response(JSON.stringify({ error: "Forbidden" }), {
-        status: 403,
-        headers: { "Content-Type": "application/json" },
-      });
+    // No secret configured or token mismatch → always 401
+    if (!expected || !(await timingSafeEqualStr(token, expected))) {
+      return bearerUnauthorized("invalid_token");
     }
   };
 }

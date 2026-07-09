@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
   Body,
   BadRequestException,
+  bearerAuth,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Module,
@@ -857,7 +859,7 @@ describe("Router", () => {
       body: JSON.stringify({ name: " Ada " }),
     });
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(201); // POST defaults to 201
     expect(await json(response)).toEqual({ name: "Ada" });
   });
 
@@ -1046,5 +1048,216 @@ describe("Router", () => {
         ],
       },
     });
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════
+//  H1 — @Body with falsy JSON values
+// ════════════════════════════════════════════════════════════════════
+
+describe("@Body parsing — falsy JSON values", () => {
+  it("returns false when JSON body is false", async () => {
+    @Controller("echo")
+    class EchoCtrl {
+      @Post()
+      check(@Body() b: unknown) { return { b }; }
+    }
+    const res = await handle(appFor(EchoCtrl), "/echo", {
+      method: "POST",
+      body: "false",
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(await json(res)).toEqual({ b: false });
+  });
+
+  it("returns 0 when JSON body is 0", async () => {
+    @Controller("echo")
+    class EchoCtrl2 {
+      @Post()
+      check(@Body() b: unknown) { return { b }; }
+    }
+    const res = await handle(appFor(EchoCtrl2), "/echo", {
+      method: "POST",
+      body: "0",
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(await json(res)).toEqual({ b: 0 });
+  });
+
+  it("returns null when JSON body is null", async () => {
+    @Controller("echo")
+    class EchoCtrl3 {
+      @Post()
+      check(@Body() b: unknown) { return { received: true }; }
+    }
+    const res = await handle(appFor(EchoCtrl3), "/echo", {
+      method: "POST",
+      body: "null",
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).not.toBe(500);
+  });
+
+  it("returns {} when request has no body", async () => {
+    @Controller("echo")
+    class EchoCtrl4 {
+      @Post()
+      check(@Body() b: unknown) { return { b }; }
+    }
+    const res = await handle(appFor(EchoCtrl4), "/echo", { method: "POST" });
+    expect(await json(res)).toEqual({ b: {} });
+  });
+
+  it("does not re-parse stream for two @Body decorators with falsy body", async () => {
+    @Controller("multi")
+    class MultiCtrl {
+      @Post()
+      check(@Body("a") a: unknown, @Body("b") b: unknown) { return { a, b }; }
+    }
+    const res = await handle(appFor(MultiCtrl), "/multi", {
+      method: "POST",
+      body: JSON.stringify({ a: false, b: 0 }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(await json(res)).toEqual({ a: false, b: 0 });
+  });
+
+  it("throws descriptive error when @Body('key') is used on array body", async () => {
+    @Controller("echo")
+    class ArrCtrl {
+      @Post()
+      check(@Body("name") name: unknown) { return { name }; }
+    }
+    const res = await handle(appFor(ArrCtrl), "/echo", {
+      method: "POST",
+      body: JSON.stringify([1, 2, 3]),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect(String(body.error)).toContain("array");
+  });
+
+  it("throws BadRequestException on invalid JSON body", async () => {
+    @Controller("echo")
+    class BadCtrl {
+      @Post()
+      check(@Body() b: unknown) { return {}; }
+    }
+    const res = await handle(appFor(BadCtrl), "/echo", {
+      method: "POST",
+      body: "not json",
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════
+//  H4 — bearerAuth HTTP semantics
+// ════════════════════════════════════════════════════════════════════
+
+describe("bearerAuth HTTP semantics", () => {
+  function makeProtectedCtrl(token: string, path: string) {
+    @Controller(path)
+    @UseMiddleware(bearerAuth({ staticToken: token }))
+    class Ctrl {
+      @Get() data() { return { secret: true }; }
+    }
+    return Ctrl;
+  }
+
+  it("returns 401 with WWW-Authenticate when Authorization header is missing", async () => {
+    const res = await handle(appFor(makeProtectedCtrl("token", "p1")), "/p1");
+    expect(res.status).toBe(401);
+    expect(res.headers.get("WWW-Authenticate")).toMatch(/^Bearer/);
+  });
+
+  it("returns 401 (not 403) with WWW-Authenticate when token is wrong", async () => {
+    const res = await handle(appFor(makeProtectedCtrl("correct", "p2")), "/p2", {
+      headers: { Authorization: "Bearer wrong" },
+    });
+    expect(res.status).toBe(401);
+    expect(res.headers.get("WWW-Authenticate")).toMatch(/^Bearer/);
+  });
+
+  it("returns 401 when no secret is configured", async () => {
+    @Controller("p3")
+    @UseMiddleware(bearerAuth({}))
+    class P3 {
+      @Get() g() { return {}; }
+    }
+    const res = await handle(appFor(P3), "/p3", {
+      headers: { Authorization: "Bearer anything" },
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("passes when correct token is provided", async () => {
+    const res = await handle(appFor(makeProtectedCtrl("valid", "p4")), "/p4", {
+      headers: { Authorization: "Bearer valid" },
+    });
+    expect(res.status).toBe(200);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════
+//  H6 — HTTP status semantics
+// ════════════════════════════════════════════════════════════════════
+
+describe("HTTP status semantics", () => {
+  it("@Post without @HttpCode responds 201", async () => {
+    @Controller("items")
+    class Items {
+      @Post() create() { return { id: 1 }; }
+    }
+    const res = await handle(appFor(Items), "/items", { method: "POST", body: "{}" });
+    expect(res.status).toBe(201);
+  });
+
+  it("@Post with @HttpCode(200) responds 200", async () => {
+    @Controller("items")
+    class Items2 {
+      @Post() @HttpCode(200) create() { return { id: 1 }; }
+    }
+    const res = await handle(appFor(Items2), "/items", { method: "POST", body: "{}" });
+    expect(res.status).toBe(200);
+  });
+
+  it("@Get without @HttpCode responds 200", async () => {
+    @Controller("items")
+    class Items3 {
+      @Get() list() { return []; }
+    }
+    const res = await handle(appFor(Items3), "/items");
+    expect(res.status).toBe(200);
+  });
+
+  it("handler returning undefined without @HttpCode responds 204", async () => {
+    @Controller("items")
+    class Items4 {
+      @Get() noop(): undefined { return undefined; }
+    }
+    const res = await handle(appFor(Items4), "/items");
+    expect(res.status).toBe(204);
+  });
+
+  it("handler returning undefined with @HttpCode(202) responds 202 with empty body", async () => {
+    @Controller("items")
+    class Items5 {
+      @Get() @HttpCode(202) accepted(): undefined { return undefined; }
+    }
+    const res = await handle(appFor(Items5), "/items");
+    expect(res.status).toBe(202);
+    expect(await res.text()).toBe("");
+  });
+
+  it("handler returning a Response is passed through unchanged", async () => {
+    @Controller("items")
+    class Items6 {
+      @Get() raw() { return new Response("custom", { status: 418 }); }
+    }
+    const res = await handle(appFor(Items6), "/items");
+    expect(res.status).toBe(418);
   });
 });

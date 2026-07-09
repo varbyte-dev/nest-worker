@@ -54,11 +54,14 @@ export class Router {
           `${MIDDLEWARES_KEY}:${route.handlerName}`,
           ctrlClass,
         ) || [];
-      const statusCode =
-        Reflect.getMetadata(
-          `${HTTP_CODE_KEY}:${route.handlerName}`,
-          ctrlClass,
-        ) || 200;
+      // Explicit @HttpCode decorator value (undefined if not set)
+      const explicitCode: number | undefined =
+        Reflect.getMetadata(`${HTTP_CODE_KEY}:${route.handlerName}`, ctrlClass) ||
+        undefined;
+      // POST defaults to 201; all other verbs default to 200
+      const defaultCode = route.method === "POST" ? 201 : 200;
+      const statusCode = explicitCode ?? defaultCode;
+      const hasExplicitCode = explicitCode !== undefined;
       const routePipes: PipeFn[] =
         Reflect.getMetadata(`${PIPES_KEY}:${route.handlerName}`, ctrlClass) ||
         [];
@@ -99,7 +102,7 @@ export class Router {
             },
           );
           const result = await instance[route.handlerName](...pipedArgs);
-          return toResponse(result, statusCode);
+          return toResponse(result, statusCode, hasExplicitCode);
         },
       });
     }
@@ -178,6 +181,10 @@ function methodMatches(routeMethod: HttpMethod, requestMethod: HttpMethod) {
   );
 }
 
+// Sentinel distinguishes "body not yet parsed" from falsy parsed values (false, 0, null).
+// This prevents re-reading the request stream when the JSON body is falsy.
+const BODY_UNSET = Symbol('BODY_UNSET');
+
 async function resolveHandlerArgs(
   req: Request,
   env: Record<string, unknown>,
@@ -187,7 +194,7 @@ async function resolveHandlerArgs(
   const args: unknown[] = [];
   if (!paramsMeta.length) return args;
 
-  let parsedBody: unknown = undefined;
+  let parsedBody: unknown = BODY_UNSET;
   const url = new URL(req.url); // cache: created once for all params
 
   for (const meta of paramsMeta) {
@@ -204,9 +211,9 @@ async function resolveHandlerArgs(
         value = meta.key ? env[meta.key] : env["DB"];
         break;
       case "body": {
-        if (!parsedBody) {
+        if (parsedBody === BODY_UNSET) {
           if (req.body === null) {
-            parsedBody = {};
+            parsedBody = {}; // no body at all → empty object
           } else {
             try {
               parsedBody = await req.json();
@@ -215,9 +222,19 @@ async function resolveHandlerArgs(
             }
           }
         }
-        value = meta.key
-          ? (parsedBody as Record<string, unknown>)[meta.key]
-          : parsedBody;
+        if (meta.key) {
+          if (Array.isArray(parsedBody)) {
+            throw new BadRequestException(
+              `Cannot use @Body('${meta.key}') with an array body — use @Body() to receive the full array`,
+            );
+          }
+          value =
+            parsedBody !== null && typeof parsedBody === "object"
+              ? (parsedBody as Record<string, unknown>)[meta.key]
+              : undefined;
+        } else {
+          value = parsedBody;
+        }
         break;
       }
       case "param":
@@ -257,10 +274,15 @@ async function applyPipes(
   return currentArgs;
 }
 
-function toResponse(value: unknown, status = 200): Response {
+function toResponse(
+  value: unknown,
+  status = 200,
+  hasExplicitStatus = false,
+): Response {
   if (value instanceof Response) return value;
+  // undefined/null: use explicit status if set, otherwise 204 No Content
   if (value === undefined || value === null)
-    return new Response(null, { status: 204 });
+    return new Response(null, { status: hasExplicitStatus ? status : 204 });
   if (typeof value === "string")
     return new Response(value, {
       status,
