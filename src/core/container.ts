@@ -210,27 +210,40 @@ export class Container {
       }
 
       // Module re-export: the imported module exports another module class entirely
-      // (handles `exports: [SomeModule]` patterns)
-      for (const exportedToken of importedContext.exports) {
-        if (
-          typeof exportedToken === "function" &&
-          this.moduleContexts.has(exportedToken)
-        ) {
-          const reExportedContext = this.moduleContexts.get(exportedToken)!;
-          if (visited.has(reExportedContext)) continue;
-          if (reExportedContext.exports.has(token)) {
-            const result = this.findProviderEntry(
-              token,
-              reExportedContext,
-              visited,
-            );
-            if (result) return result;
+        // (handles `exports: [SomeModule]` patterns)
+        for (const exportedToken of importedContext.exports) {
+          if (
+            typeof exportedToken === "function" &&
+            this.moduleContexts.has(exportedToken)
+          ) {
+            const reExportedContext = this.moduleContexts.get(exportedToken)!;
+            if (visited.has(reExportedContext)) continue;
+            if (reExportedContext.exports.has(token)) {
+              const result = this.findProviderEntry(
+                token,
+                reExportedContext,
+                visited,
+              );
+              if (result) return result;
+            }
           }
         }
       }
-    }
 
-    return undefined;
+      // Fallback to rootContext: if the provider is not found in the module's own
+      // context or its imports, try the global root. This handles the case where a
+      // controller in ModuleA depends on a service exported by ModuleB, but ModuleA
+      // does not directly import ModuleB — as long as AppModule (rootContext) imports
+      // ModuleB and ModuleB exports the service, it will be resolved.
+      if (
+        this.rootContext &&
+        context !== this.rootContext &&
+        !visited.has(this.rootContext)
+      ) {
+        return this.findProviderEntry(token, this.rootContext, visited);
+      }
+
+      return undefined;
   }
 
   resolveController(ctrlClass: any): any {

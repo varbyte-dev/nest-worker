@@ -349,4 +349,90 @@ describe("Container", () => {
       );
     });
   });
+
+  // ═══════════════════════════════════════════════════════════════════
+  //  rootContext fallback
+  // ═══════════════════════════════════════════════════════════════════
+
+  describe("rootContext fallback", () => {
+    /**
+     * Scenario: ControllerA lives in ModuleA. ServiceB lives in ModuleB.
+     * ModuleA does NOT import ModuleB. AppModule imports both.
+     * ModuleB exports ServiceB.
+     *
+     * Expected: resolveController(ControllerA) finds ServiceB via the
+     * rootContext fallback, because AppModule imports ModuleB which exports it.
+     */
+    it("resolves a dependency from a sibling module via rootContext fallback", () => {
+      @Injectable()
+      class ServiceB {
+        greet() { return "from ServiceB"; }
+      }
+
+      const CTRL_DEPS = "__deps__";
+      class ControllerA {
+        constructor(public readonly svcB: ServiceB) {}
+      }
+      Reflect.defineMetadata(CTRL_DEPS, [ServiceB], ControllerA);
+
+      const ModuleA = createModule({ controllers: [ControllerA] });
+      const ModuleB = createModule({
+        providers: [ServiceB],
+        exports: [ServiceB],
+      });
+      const AppModule = createModule({ imports: [ModuleA, ModuleB] });
+
+      const container = new Container();
+      container.register(AppModule);
+
+      const ctrl = container.resolveController(ControllerA);
+      expect(ctrl).toBeInstanceOf(ControllerA);
+      expect(ctrl.svcB).toBeInstanceOf(ServiceB);
+      expect(ctrl.svcB.greet()).toBe("from ServiceB");
+    });
+
+    it("still throws when the provider is not exported anywhere", () => {
+      @Injectable()
+      class PrivateService {}
+
+      class ControllerX {
+        constructor(public readonly svc: PrivateService) {}
+      }
+      Reflect.defineMetadata("__deps__", [PrivateService], ControllerX);
+
+      // PrivateService is registered but NOT exported
+      const ModulePrivate = createModule({
+        providers: [PrivateService],
+        exports: [],           // <-- not exported
+      });
+      const ModuleX = createModule({ controllers: [ControllerX] });
+      const AppModule = createModule({ imports: [ModuleX, ModulePrivate] });
+
+      const container = new Container();
+      container.register(AppModule);
+
+      expect(() => container.resolveController(ControllerX)).toThrow(
+        "No provider found",
+      );
+    });
+
+    it("does not cause infinite recursion when already searching rootContext", () => {
+      @Injectable()
+      class SomeService {}
+
+      // SomeService is not registered anywhere
+      class ControllerZ {
+        constructor(public svc: SomeService) {}
+      }
+      Reflect.defineMetadata("__deps__", [SomeService], ControllerZ);
+
+      const AppModule = createModule({ controllers: [ControllerZ] });
+      const container = new Container();
+      container.register(AppModule);
+
+      expect(() => container.resolveController(ControllerZ)).toThrow(
+        "No provider found",
+      );
+    });
+  });
 });
