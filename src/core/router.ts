@@ -19,8 +19,7 @@ const HTTP_CODE_KEY = "__http_code__";
 const PIPES_KEY = "__pipes__";
 
 export class Router {
-  private routes: Array<{
-    method: HttpMethod;
+  private routesByMethod = new Map<HttpMethod, Array<{
     pattern: URLPattern;
     rawPath: string;
     handler: (
@@ -29,7 +28,7 @@ export class Router {
       ctx: ExecutionContext,
       params: Record<string, string>,
     ) => Promise<Response>;
-  }> = [];
+  }>>();
 
   constructor(
     private container: Container,
@@ -66,8 +65,8 @@ export class Router {
         Reflect.getMetadata(`${PIPES_KEY}:${route.handlerName}`, ctrlClass) ||
         [];
 
-      this.routes.push({
-        method: route.method,
+      const list = this.routesByMethod.get(route.method) ?? [];
+      list.push({
         pattern,
         rawPath: fullPath,
         handler: async (req, env, ctx, pathParams) => {
@@ -105,6 +104,7 @@ export class Router {
           return toResponse(result, statusCode, hasExplicitCode);
         },
       });
+      this.routesByMethod.set(route.method, list);
     }
   }
 
@@ -116,8 +116,9 @@ export class Router {
     const url = new URL(request.url);
     const method = request.method.toUpperCase() as HttpMethod;
 
-    for (const route of this.routes) {
-      if (!methodMatches(route.method, method)) continue;
+    const lookupMethod = method === 'HEAD' ? 'GET' : method;
+    const candidates = this.routesByMethod.get(lookupMethod) ?? [];
+    for (const route of candidates) {
       const match = route.pattern.exec({ pathname: url.pathname });
       if (match) {
         const params = match.pathname.groups as Record<string, string>;
@@ -172,13 +173,6 @@ export class Router {
 
 function normalizePath(path: string): string {
   return path.replace(/\/+/g, "/").replace(/\/$/, "") || "/";
-}
-
-function methodMatches(routeMethod: HttpMethod, requestMethod: HttpMethod) {
-  return (
-    routeMethod === requestMethod ||
-    (routeMethod === "GET" && requestMethod === "HEAD")
-  );
 }
 
 // Sentinel distinguishes "body not yet parsed" from falsy parsed values (false, 0, null).
