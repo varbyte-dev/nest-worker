@@ -24,6 +24,7 @@ export class Container {
   private controllerContexts = new Map<any, ModuleContext>();
   private controllers: any[] = [];
   private plugins: NestWorkerPlugin[] = [];
+  private resolutionStack: InjectionToken[] = [];
 
   register(moduleClass: any) {
     this.rootContext = this.createModuleContext(moduleClass);
@@ -107,6 +108,11 @@ export class Container {
     }
   }
 
+  private tokenName(token: InjectionToken): string {
+    if (typeof token === "function") return token.name;
+    return String(token);
+  }
+
   resolve<T>(token: InjectionToken): T {
     if (!this.rootContext) {
       throw new Error("Container has not been registered with a root module");
@@ -123,59 +129,108 @@ export class Container {
       return context.instances.get(token) as T;
     }
 
+    if (this.resolutionStack.includes(token)) {
+      const chain = [...this.resolutionStack, token]
+        .map((t) => this.tokenName(t))
+        .join(" → ");
+      throw new Error(`Circular dependency detected: ${chain}`);
+    }
+
     const entry = this.findProviderEntry(token, context);
     if (!entry) {
-      throw new Error(`No provider found for token: ${String(token)}`);
+      const chainSuffix =
+        this.resolutionStack.length > 0
+          ? ` (resolution chain: ${[...this.resolutionStack, token]
+              .map((t) => this.tokenName(t))
+              .join(" → ")})`
+          : "";
+      throw new Error(
+        `No provider found for token: ${String(token)}${chainSuffix}`,
+      );
     }
 
     const ownerContext = entry.context;
-    let instance: T;
 
-    switch (entry.provider.type) {
-      case "value":
-        instance = entry.provider.value;
-        break;
+    this.resolutionStack.push(token);
+    try {
+      let instance: T;
 
-      case "factory": {
-        const factoryDeps = entry.provider.deps.map((dep: InjectionToken) =>
-          this.resolveFromContext(dep, ownerContext),
-        );
-        instance = entry.provider.value(...factoryDeps);
-        break;
+      switch (entry.provider.type) {
+        case "value":
+          instance = entry.provider.value;
+          break;
+
+        case "factory": {
+          const factoryDeps = entry.provider.deps.map((dep: InjectionToken) =>
+            this.resolveFromContext(dep, ownerContext),
+          );
+          instance = entry.provider.value(...factoryDeps);
+          break;
+        }
+
+        case "class":
+        default: {
+          const ProviderClass = entry.provider.value;
+          const deps: InjectionToken[] =
+            Reflect.getMetadata(DEPS_KEY, ProviderClass) || [];
+          const resolvedDeps = deps.map((dep) =>
+            this.resolveFromContext(dep, ownerContext),
+          );
+          instance = new ProviderClass(...resolvedDeps);
+          break;
+        }
       }
 
-      case "class":
-      default: {
-        const ProviderClass = entry.provider.value;
-        const deps: InjectionToken[] =
-          Reflect.getMetadata(DEPS_KEY, ProviderClass) || [];
-        const resolvedDeps = deps.map((dep) =>
-          this.resolveFromContext(dep, ownerContext),
-        );
-        instance = new ProviderClass(...resolvedDeps);
-        break;
-      }
+      ownerContext.instances.set(token, instance);
+      return instance as T;
+    } finally {
+      this.resolutionStack.pop();
     }
-
-    ownerContext.instances.set(token, instance);
-    return instance as T;
   }
 
   private findProviderEntry(
     token: InjectionToken,
     context: ModuleContext,
+    visited = new Set<ModuleContext>(),
   ): { provider: ProviderEntry; context: ModuleContext } | undefined {
+    // Check own providers first
     const ownProvider = context.providers.get(token);
     if (ownProvider) return { provider: ownProvider, context };
 
-    for (const importedContext of context.imports) {
-      if (!importedContext.exports.has(token)) continue;
+    // Guard against cycles in the module graph
+    visited.add(context);
 
-      const importedProvider = importedContext.providers.get(token);
-      if (importedProvider) {
-        return { provider: importedProvider, context: importedContext };
+    for (const importedContext of context.imports) {
+      if (visited.has(importedContext)) continue;
+
+      // Direct re-export: the imported module exports this token (handles chained re-exports)
+      if (importedContext.exports.has(token)) {
+        const result = this.findProviderEntry(token, importedContext, visited);
+        if (result) return result;
+      }
+
+      // Module re-export: the imported module exports another module class entirely
+      // (handles `exports: [SomeModule]` patterns)
+      for (const exportedToken of importedContext.exports) {
+        if (
+          typeof exportedToken === "function" &&
+          this.moduleContexts.has(exportedToken)
+        ) {
+          const reExportedContext = this.moduleContexts.get(exportedToken)!;
+          if (visited.has(reExportedContext)) continue;
+          if (reExportedContext.exports.has(token)) {
+            const result = this.findProviderEntry(
+              token,
+              reExportedContext,
+              visited,
+            );
+            if (result) return result;
+          }
+        }
       }
     }
+
+    return undefined;
   }
 
   resolveController(ctrlClass: any): any {
